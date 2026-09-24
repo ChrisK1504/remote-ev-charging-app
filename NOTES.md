@@ -15,8 +15,13 @@
 
 #### DECISIONS
 - For the project i will use OCPP 1.6-J, seeing as its the most popular commercialy, with its JSON implementation for a more modern and compact approach.
-- Tech stack will be NestJS backend, React frontend (Mobile app in React Native would be desirable for the end user but out of scope). 
+- Tech stack will be NestJS backend, React frontend (React Native mobile app would be desirable for the client but out of scope). 
 
+#### ACHIEVED
+- A websocket connection between the backend and the simulated charging point.
+![alt text](images/image.png)
+
+# DAY 2 - Proper Server Response ; Accept BootNotification
 
 
 
