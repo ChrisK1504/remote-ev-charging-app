@@ -32,6 +32,15 @@ onModuleInit() {
 ### DECISIONS
 - Decided on using *Ozgur Bayram OCPP Simulator (https://github.com/ozgurbayram/OCPPSimulator)* as the Charging Point simulator.
 - Decided on using platform-ws as my websocket platform (since that's what was used in the nestjs docs.) OCPP uses standard Websocket, so platform-ws should be used.
+- OCPP specificies a lot of actions. I chose the smallest subset to demonstrate remote charging:
+1. BootNotification
+2. Heartbeat
+3. StatusNotification
+4. RemoteStartTransaction    
+5. StartTransaction
+6. MeterValues
+7. RemoteStopTransaction     
+8. StopTransaction
 
 ### STEPS
 #### Client Request
@@ -44,6 +53,23 @@ ws://localhost:9000/ocpp/CP001
 The OCPP version must be specified in the Sec-Websocket-Protocol Field. In my case 'ocpp1.6'
 
 #### Server Response [TODO]
+##### Unsatisfied Connection 
+As per ocpp1.6-j specification
+- If the Central system does not recognize the charge point identifier in the URL path, it SHOULD return a 404 and abort the websocket connection.
+- If the Central System does not agree to using one of the subprotocols offered by the client, it MUST complete the websocket handshake with a response without a 'Sec-WebSocket-Protocol' header and immediately close the websocket connection.
+
+##### Message Types
+- CALL ; 2 ; Client-to-Server 
+- CALLRESULT ; 3 ; Server-to-Client
+- CALLERROR ; 4 ; Server-to-Client
+
+##### Message structure
+CALL:
+[<MessageTypeId>, "<UniqueId>", "<Action>", {<Payload>}]
+CALLRESULT:
+[<MessageTypeId>, "<UniqueId>", {<Payload>}]
+CALLERROR:
+[<MessageTypeId>, "<UniqueId>", "<errorCode>", "<errorDescription>", {<errorDetails>}]
 
 
 ### ISSUES

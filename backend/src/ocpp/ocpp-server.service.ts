@@ -18,12 +18,33 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.wss.on('connection', (socket, request) => {
+      const chargePointId = request.url?.split('/').pop();
       console.log('WebSocket connection received');
       console.log('URL:', request.url);
+      console.log('Charge Point ID:', chargePointId);
       console.log('Protocol:', socket.protocol);
 
       socket.on('message', (data) => {
         console.log('MESSAGE:', data.toString());
+        const message = JSON.parse(data.toString());
+
+        const [messageTypeId, messageId, action, payload] = message;
+
+        if (messageTypeId === 2 && action === 'BootNotification') {
+          console.log('BootNotification received:', payload);
+          const response = [
+            3,
+            // The same messageId is reused
+            messageId,
+            {
+              status: 'Accepted',
+              currenTime: new Date().toISOString(),
+              interval: 60,
+            },
+          ];
+          socket.send(JSON.stringify(response));
+          console.log('BootNotification accepted');
+        }
       });
 
       socket.on('close', () => {

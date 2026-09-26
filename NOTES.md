@@ -20,6 +20,8 @@
 #### ACHIEVED
 - A websocket connection between the backend and the simulated charging point.
 ![alt text](images/image.png)
+- BootNotification signal responded to by server.
+![alt text](image.png)
 
 # DAY 2 - Proper Server Response ; Accept BootNotification
 
