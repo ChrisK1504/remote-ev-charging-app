@@ -30,20 +30,50 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
         const [messageTypeId, messageId, action, payload] = message;
 
-        if (messageTypeId === 2 && action === 'BootNotification') {
-          console.log('BootNotification received:', payload);
-          const response = [
-            3,
-            // The same messageId is reused
-            messageId,
-            {
-              status: 'Accepted',
-              currenTime: new Date().toISOString(),
-              interval: 60,
-            },
-          ];
-          socket.send(JSON.stringify(response));
-          console.log('BootNotification accepted');
+        if (messageTypeId === 2) {
+          switch (action) {
+            case 'BootNotification':
+              {
+                console.log(
+                  `${chargePointId} BootNotification: ${JSON.stringify(payload)}\n`,
+                );
+                const response = [
+                  3,
+                  // The same messageId is reused
+                  messageId,
+                  {
+                    status: 'Accepted',
+                    currenTime: new Date().toISOString(),
+                    interval: 2,
+                  },
+                ];
+                socket.send(JSON.stringify(response));
+                console.log('BootNotification accepted');
+              }
+              break;
+            case 'Heartbeat':
+              {
+                console.log(`${chargePointId} HeartBeat`);
+                const response = [
+                  3,
+                  messageId,
+                  {
+                    currentTime: new Date().toISOString(),
+                  },
+                ];
+
+                socket.send(JSON.stringify(response));
+                console.log('Heartbeat responded');
+              }
+              break;
+            case 'StatusNotification':
+              console.log(
+                `${chargePointId} connector ${payload.connectorId}: ${payload.status}`,
+              );
+
+              socket.send(JSON.stringify([3, messageId, {}]));
+              break;
+          }
         }
       });
 
