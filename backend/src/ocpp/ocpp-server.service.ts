@@ -1,9 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { WebSocketServer } from 'ws';
+import { ChargeStateService } from './charger-state.service';
 
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
-  private wss: WebSocketServer;
+  private wss!: WebSocketServer;
+
+  constructor(private readonly chargeStateService: ChargeStateService) {}
 
   onModuleInit() {
     this.wss = new WebSocketServer({
@@ -19,6 +22,14 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
     this.wss.on('connection', (socket, request) => {
       const chargePointId = request.url?.split('/').pop();
+
+      if (!chargePointId) {
+        console.error('Connection rejected: missing charge point ID');
+        socket.close(1008, 'Missing charge point ID');
+        return;
+      }
+      this.chargeStateService.connect(chargePointId);
+
       console.log('WebSocket connection received');
       console.log('URL:', request.url);
       console.log('Charge Point ID:', chargePointId);
@@ -71,6 +82,13 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
                 `${chargePointId} connector ${payload.connectorId}: ${payload.status}`,
               );
 
+              this.chargeStateService.updateConnector(chargePointId, {
+                connectorId: payload.connectorId,
+                status: payload.status,
+                errorCode: payload.errorCode,
+                updatedAt: new Date(),
+              });
+
               socket.send(JSON.stringify([3, messageId, {}]));
               break;
           }
@@ -79,10 +97,12 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
       socket.on('close', () => {
         console.log('Charge point disconnected');
+        this.chargeStateService.disconnect(chargePointId);
       });
 
       socket.on('error', (error) => {
         console.error('WebSocket error:', error);
+        this.chargeStateService.disconnect(chargePointId);
       });
     });
   }
