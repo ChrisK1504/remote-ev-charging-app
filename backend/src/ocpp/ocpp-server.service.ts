@@ -1,12 +1,51 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { ChargeStateService } from './charger-state.service';
+import { ConnectionManagerServie } from './connection-manager.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
 
-  constructor(private readonly chargeStateService: ChargeStateService) {}
+  constructor(
+    private readonly chargeStateService: ChargeStateService,
+    private readonly connectionManagerService: ConnectionManagerServie,
+  ) {}
+
+  private sendCall(
+    chargePointId: string,
+    action: string,
+    payload: Record<string, unknown>,
+  ): string {
+    const socket = this.connectionManagerService.get(chargePointId);
+
+    if (!socket) {
+      throw new Error(`Charge point ${chargePointId} is not connected`);
+    }
+
+    const messageId = randomUUID();
+
+    const message = [2, messageId, action, payload];
+    console.log(
+      `Sending ${action} to ${chargePointId}`,
+      JSON.stringify(message),
+    );
+
+    socket.send(JSON.stringify(message));
+
+    return messageId;
+  }
+
+  private sendCallResult(
+    socket: WebSocket,
+    messageId,
+    payload: Record<string, unknown>,
+  ): void {
+    const response = [3, messageId, payload];
+
+    socket.send(JSON.stringify(response));
+  }
 
   onModuleInit() {
     this.wss = new WebSocketServer({
@@ -28,7 +67,9 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
         socket.close(1008, 'Missing charge point ID');
         return;
       }
+
       this.chargeStateService.connect(chargePointId);
+      this.connectionManagerService.add(chargePointId, socket);
 
       console.log('WebSocket connection received');
       console.log('URL:', request.url);
@@ -60,6 +101,11 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
                 ];
                 socket.send(JSON.stringify(response));
                 console.log('BootNotification accepted');
+
+                this.sendCall('CP_001', 'RemoteStartTransaction', {
+                  connectorId: 1,
+                  idTag: 'TEST',
+                });
               }
               break;
             case 'Heartbeat':
@@ -91,6 +137,15 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
               socket.send(JSON.stringify([3, messageId, {}]));
               break;
+            case 'Authorize': {
+              console.log(`${chargePointId} Authorize: ${payload.idTag}`);
+
+              this.sendCallResult(socket, messageId, {
+                idTagInfo: {
+                  status: 'Available',
+                },
+              });
+            }
           }
         }
       });

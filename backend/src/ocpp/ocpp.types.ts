@@ -16,3 +16,11 @@ export interface StatusNotificationRequest {
   errorCode: string; // should be an enum
   status: string; // should be an enum
 }
+
+export interface RemoteStartTransactionRequest { // CMS -> CP
+    idTag: string;
+}
+
+export interface RemoteStartTransactionResponse {
+    status: string; // Should become an enum
+}

@@ -80,10 +80,15 @@ Sent on boot. Contains vendor, model, serial, firmware version. CS responds with
 - Heartbeat [CP->CS] [DONE]
 Periodic keepalive. CS responds with current time for clock sync.
 
-- StatusNotification [CP->CS]
+- StatusNotification [CP->CS] [DONE]
 Charge Point reports a connector status or error change.
 
+- RemoteStartTransaction [CMS->CP]
 
+- Authorize
+![alt text](image.png)
+
+- StartTransaction
 
 
 
