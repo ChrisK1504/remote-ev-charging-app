@@ -86,9 +86,10 @@ Charge Point reports a connector status or error change.
 - RemoteStartTransaction [CMS->CP]
 
 - Authorize
-![alt text](image.png)
+![alt text](images/authorize_transaction.png)
 
-- StartTransaction
+- StartTransaction [CP->CMS]
+![alt text](images/startTransaction_metervalues.png)
 
 
 

@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
+  private transactionId: number = 0;
 
   constructor(
     private readonly chargeStateService: ChargeStateService,
@@ -137,15 +138,32 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
               socket.send(JSON.stringify([3, messageId, {}]));
               break;
-            case 'Authorize': {
-              console.log(`${chargePointId} Authorize: ${payload.idTag}`);
+            case 'Authorize':
+              {
+                console.log(`${chargePointId} Authorize: ${payload.idTag}`);
 
-              this.sendCallResult(socket, messageId, {
-                idTagInfo: {
-                  status: 'Available',
-                },
-              });
-            }
+                this.sendCallResult(socket, messageId, {
+                  idTagInfo: {
+                    status: 'Available',
+                  },
+                });
+              }
+              break;
+            case 'StartTransaction':
+              {
+                const transactionId = this.transactionId++;
+                console.log(
+                  `Start transaction from: ${chargePointId} for connector: ${payload.connectorId}`,
+                );
+
+                this.sendCallResult(socket, messageId, {
+                  idTagInfo: {
+                    status: 'Accepted',
+                    transactionId: transactionId,
+                  },
+                });
+              }
+              break;
           }
         }
       });

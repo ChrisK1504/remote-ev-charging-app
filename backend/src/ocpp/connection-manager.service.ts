@@ -3,17 +3,17 @@ import { WebSocket } from 'ws';
 
 @Injectable()
 export class ConnectionManagerServie {
-    private readonly connections = new Map<string, WebSocket>();
-    
-    add(chargePointId: string, socket: WebSocket): void {
-        this.connections.set(chargePointId, socket);
-    }
+  private readonly connections = new Map<string, WebSocket>();
 
-    remove(chargePointId: string): void {
-        this.connections.delete(chargePointId);
-    }
+  add(chargePointId: string, socket: WebSocket): void {
+    this.connections.set(chargePointId, socket);
+  }
 
-    get(chargePointId: string): WebSocket | undefined {
-        return this.connections.get(chargePointId);
-    }
+  remove(chargePointId: string): void {
+    this.connections.delete(chargePointId);
+  }
+
+  get(chargePointId: string): WebSocket | undefined {
+    return this.connections.get(chargePointId);
+  }
 }
