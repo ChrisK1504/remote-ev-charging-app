@@ -3,6 +3,20 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerServie } from './connection-manager.service';
 import { randomUUID } from 'crypto';
+import {
+  AuthorizeRequest,
+  AuthorizeResponse,
+  BootNotificationRequest,
+  BootNotificationResponse,
+  HeartBeatResponse,
+  OcppActionMap,
+  OcppCall,
+  OcppMessageType,
+  StartTransactionRequest,
+  StartTransactionResponse,
+  StatusNotificationRequest,
+  StatusNotificationResponse,
+} from './ocpp.types';
 
 interface PendingRequest {
   resolve: (payload: unknown) => void;
@@ -12,7 +26,7 @@ interface PendingRequest {
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
-  private transactionId: number = 0;
+  private transactionId: number = 1;
   private readonly pendingRequests = new Map<string, PendingRequest>();
 
   constructor(
@@ -20,11 +34,11 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     private readonly connectionManagerService: ConnectionManagerServie,
   ) {}
 
-  private async sendCall(
+  private async sendCall<A extends keyof OcppActionMap>(
     chargePointId: string,
-    action: string,
-    payload: Record<string, unknown>,
-  ): Promise<unknown> {
+    action: A,
+    payload: OcppActionMap[A]['request'],
+  ): Promise<OcppActionMap[A]['response']> {
     const socket = this.connectionManagerService.get(chargePointId);
 
     if (!socket) {
@@ -33,15 +47,23 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
     const messageId = randomUUID();
 
-    const message = [2, messageId, action, payload];
+    const message: OcppCall<A> = [
+      OcppMessageType.Call,
+      messageId,
+      action,
+      payload,
+    ];
+
     console.log(
       `Sending ${action} to ${chargePointId}`,
       JSON.stringify(message),
     );
 
-    return new Promise((resolve, reject) => {
+    return new Promise<OcppActionMap[A]['response']>((resolve, reject) => {
       this.pendingRequests.set(messageId, {
-        resolve,
+        resolve: (payload: unknown): void => {
+          resolve(payload as OcppActionMap[A]['response']);
+        },
         reject,
       });
       socket.send(JSON.stringify(message));
@@ -59,10 +81,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private sendCallResult(
+  private sendCallResult<A extends keyof OcppActionMap>(
     socket: WebSocket,
     messageId,
-    payload: Record<string, unknown>,
+    payload: OcppActionMap[A]['response'],
   ): void {
     const response = [3, messageId, payload];
 
@@ -88,29 +110,31 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     console.log(`MESSAGE: ${rawMessage}`);
 
-    const message = JSON.parse(rawMessage);
+    const message: unknown = JSON.parse(rawMessage);
+
+    if (!Array.isArray(message)) {
+      throw new Error('Invalid OCPP message');
+    }
+
     const [messageTypeId, messageId, actionOrPayload, payload] = message;
 
     if (messageTypeId === 2) {
       const action = actionOrPayload;
-
       switch (action) {
         case 'BootNotification':
           {
+            const request = payload as BootNotificationRequest;
             console.log(
-              `${chargePointId} BootNotification: ${JSON.stringify(payload)}\n`,
+              `${chargePointId} BootNotification: ${JSON.stringify(request)}\n`,
             );
-            const response = [
-              3,
-              // The same messageId is reused
-              messageId,
-              {
-                status: 'Accepted',
-                currentTime: new Date().toISOString(),
-                interval: 2,
-              },
-            ];
-            socket.send(JSON.stringify(response));
+
+            const response: BootNotificationResponse = {
+              currentTime: new Date().toISOString(),
+              interval: 10,
+              status: 'Accepted',
+            };
+
+            this.sendCallResult(socket, messageId, response);
             console.log('BootNotification accepted');
 
             const result = await this.sendCall(
@@ -122,62 +146,72 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               },
             );
 
-            console.log(`Bootnotification result: `, result);
+            console.log(`BootNotification result: `, result);
           }
           break;
         case 'Heartbeat':
           {
             console.log(`${chargePointId} HeartBeat`);
-            const response = [
-              3,
-              messageId,
-              {
-                currentTime: new Date().toISOString(),
-              },
-            ];
 
-            socket.send(JSON.stringify(response));
+            const response: HeartBeatResponse = {
+              currentTime: new Date().toISOString(),
+            };
+            this.sendCallResult(socket, messageId, response);
+
             console.log('Heartbeat responded');
           }
           break;
         case 'StatusNotification':
-          console.log(
-            `${chargePointId} connector ${payload.connectorId}: ${payload.status}`,
-          );
+          {
+            const request = payload as StatusNotificationRequest;
+            console.log(
+              `${chargePointId} connector ${request.connectorId}: ${request.status}`,
+            );
 
-          this.chargeStateService.updateConnector(chargePointId, {
-            connectorId: payload.connectorId,
-            status: payload.status,
-            errorCode: payload.errorCode,
-            updatedAt: new Date(),
-          });
+            this.chargeStateService.updateConnector(chargePointId, {
+              connectorId: request.connectorId,
+              status: request.status,
+              errorCode: request.errorCode,
+              updatedAt: new Date(),
+            });
 
-          socket.send(JSON.stringify([3, messageId, {}]));
+            this.sendCallResult(
+              socket,
+              messageId,
+              {} as StatusNotificationResponse,
+            );
+          }
           break;
         case 'Authorize':
           {
-            console.log(`${chargePointId} Authorize: ${payload.idTag}`);
+            const request: AuthorizeRequest = payload as AuthorizeRequest;
+            console.log(`${chargePointId} Authorize: ${request.idTag}`);
 
-            this.sendCallResult(socket, messageId, {
+            const response: AuthorizeResponse = {
               idTagInfo: {
                 status: 'Accepted',
               },
-            });
+            };
+            this.sendCallResult(socket, messageId, response);
           }
           break;
         case 'StartTransaction':
           {
             const transactionId = this.transactionId++;
+
+            const request = payload as StartTransactionRequest;
             console.log(
-              `Start transaction from: ${chargePointId} for connector: ${payload.connectorId}`,
+              `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
             );
 
-            this.sendCallResult(socket, messageId, {
+            const response: StartTransactionResponse = {
               idTagInfo: {
                 status: 'Accepted',
                 transactionId: transactionId,
               },
-            });
+            };
+
+            this.sendCallResult(socket, messageId, response);
           }
           break;
       }
@@ -240,6 +274,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       });
     });
   }
+
   onModuleDestroy() {
     this.wss.close();
   }

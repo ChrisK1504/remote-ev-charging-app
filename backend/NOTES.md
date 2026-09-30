@@ -34,13 +34,14 @@ onModuleInit() {
 - Decided on using platform-ws as my websocket platform (since that's what was used in the nestjs docs.) OCPP uses standard Websocket, so platform-ws should be used.
 - OCPP specificies a lot of actions. I chose the smallest subset to demonstrate remote charging:
 1. BootNotification [DONE]
-2. Heartbeat [TODO]
-3. StatusNotification
-4. RemoteStartTransaction    
-5. StartTransaction
-6. MeterValues
-7. RemoteStopTransaction     
-8. StopTransaction
+2. Heartbeat [DONE]
+3. StatusNotification [DONE]
+4. RemoteStartTransaction  [DONE]   
+5. StartTransaction [DONE]
+6. MeterValues [TODO]
+7. RemoteStopTransaction [TODO]  
+8. StopTransaction [TODO]
+9. Authorize [DONE]
 
 ### STEPS
 #### Client Request
