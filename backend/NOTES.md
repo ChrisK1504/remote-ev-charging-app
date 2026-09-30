@@ -99,4 +99,5 @@ Charge Point reports a connector status or error change.
 ### ISSUES
 - Standard WS should be used to use OCPP .
 - Module wiring caused the websocketservice to be initialized twice, throwing an error by occupying the same port twice.
+- Cannot just make calls to the CP, but have to wait for them to be resolved. Promise API must be used.
 

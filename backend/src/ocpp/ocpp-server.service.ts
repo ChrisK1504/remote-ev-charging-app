@@ -4,21 +4,27 @@ import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerServie } from './connection-manager.service';
 import { randomUUID } from 'crypto';
 
+interface PendingRequest {
+  resolve: (payload: unknown) => void;
+  reject: (error: Error) => void;
+}
+
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
   private transactionId: number = 0;
+  private readonly pendingRequests = new Map<string, PendingRequest>();
 
   constructor(
     private readonly chargeStateService: ChargeStateService,
     private readonly connectionManagerService: ConnectionManagerServie,
   ) {}
 
-  private sendCall(
+  private async sendCall(
     chargePointId: string,
     action: string,
     payload: Record<string, unknown>,
-  ): string {
+  ): Promise<unknown> {
     const socket = this.connectionManagerService.get(chargePointId);
 
     if (!socket) {
@@ -33,9 +39,24 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       JSON.stringify(message),
     );
 
-    socket.send(JSON.stringify(message));
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.set(messageId, {
+        resolve,
+        reject,
+      });
+      socket.send(JSON.stringify(message));
 
-    return messageId;
+      setTimeout(() => {
+        const pending = this.pendingRequests.get(messageId);
+
+        if (!pending) {
+          return;
+        }
+        this.pendingRequests.delete(messageId);
+
+        reject(new Error(`${action} timed out`));
+      }, 10000);
+    });
   }
 
   private sendCallResult(
@@ -46,6 +67,129 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     const response = [3, messageId, payload];
 
     socket.send(JSON.stringify(response));
+  }
+
+  private handleCallResult(messageId: string, payload: unknown): void {
+    const pending = this.pendingRequests.get(messageId);
+
+    if (!pending) {
+      console.warn(`No pending requests for ${messageId}`);
+      return;
+    }
+
+    this.pendingRequests.delete(messageId);
+    pending.resolve(payload);
+  }
+
+  private async handleMessage(
+    chargePointId,
+    socket: WebSocket,
+    rawMessage: string,
+  ): Promise<void> {
+    console.log(`MESSAGE: ${rawMessage}`);
+
+    const message = JSON.parse(rawMessage);
+    const [messageTypeId, messageId, actionOrPayload, payload] = message;
+
+    if (messageTypeId === 2) {
+      const action = actionOrPayload;
+
+      switch (action) {
+        case 'BootNotification':
+          {
+            console.log(
+              `${chargePointId} BootNotification: ${JSON.stringify(payload)}\n`,
+            );
+            const response = [
+              3,
+              // The same messageId is reused
+              messageId,
+              {
+                status: 'Accepted',
+                currentTime: new Date().toISOString(),
+                interval: 2,
+              },
+            ];
+            socket.send(JSON.stringify(response));
+            console.log('BootNotification accepted');
+
+            const result = await this.sendCall(
+              chargePointId,
+              'RemoteStartTransaction',
+              {
+                connectorId: 1,
+                idTag: 'TEST',
+              },
+            );
+
+            console.log(`Bootnotification result: `, result);
+          }
+          break;
+        case 'Heartbeat':
+          {
+            console.log(`${chargePointId} HeartBeat`);
+            const response = [
+              3,
+              messageId,
+              {
+                currentTime: new Date().toISOString(),
+              },
+            ];
+
+            socket.send(JSON.stringify(response));
+            console.log('Heartbeat responded');
+          }
+          break;
+        case 'StatusNotification':
+          console.log(
+            `${chargePointId} connector ${payload.connectorId}: ${payload.status}`,
+          );
+
+          this.chargeStateService.updateConnector(chargePointId, {
+            connectorId: payload.connectorId,
+            status: payload.status,
+            errorCode: payload.errorCode,
+            updatedAt: new Date(),
+          });
+
+          socket.send(JSON.stringify([3, messageId, {}]));
+          break;
+        case 'Authorize':
+          {
+            console.log(`${chargePointId} Authorize: ${payload.idTag}`);
+
+            this.sendCallResult(socket, messageId, {
+              idTagInfo: {
+                status: 'Accepted',
+              },
+            });
+          }
+          break;
+        case 'StartTransaction':
+          {
+            const transactionId = this.transactionId++;
+            console.log(
+              `Start transaction from: ${chargePointId} for connector: ${payload.connectorId}`,
+            );
+
+            this.sendCallResult(socket, messageId, {
+              idTagInfo: {
+                status: 'Accepted',
+                transactionId: transactionId,
+              },
+            });
+          }
+          break;
+      }
+      return;
+    }
+
+    if (messageTypeId === 3) {
+      const payload = actionOrPayload;
+
+      this.handleCallResult(messageId, payload);
+      return;
+    }
   }
 
   onModuleInit() {
@@ -78,94 +222,11 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       console.log('Protocol:', socket.protocol);
 
       socket.on('message', (data) => {
-        console.log('MESSAGE:', data.toString());
-        const message = JSON.parse(data.toString());
-
-        const [messageTypeId, messageId, action, payload] = message;
-
-        if (messageTypeId === 2) {
-          switch (action) {
-            case 'BootNotification':
-              {
-                console.log(
-                  `${chargePointId} BootNotification: ${JSON.stringify(payload)}\n`,
-                );
-                const response = [
-                  3,
-                  // The same messageId is reused
-                  messageId,
-                  {
-                    status: 'Accepted',
-                    currenTime: new Date().toISOString(),
-                    interval: 2,
-                  },
-                ];
-                socket.send(JSON.stringify(response));
-                console.log('BootNotification accepted');
-
-                this.sendCall('CP_001', 'RemoteStartTransaction', {
-                  connectorId: 1,
-                  idTag: 'TEST',
-                });
-              }
-              break;
-            case 'Heartbeat':
-              {
-                console.log(`${chargePointId} HeartBeat`);
-                const response = [
-                  3,
-                  messageId,
-                  {
-                    currentTime: new Date().toISOString(),
-                  },
-                ];
-
-                socket.send(JSON.stringify(response));
-                console.log('Heartbeat responded');
-              }
-              break;
-            case 'StatusNotification':
-              console.log(
-                `${chargePointId} connector ${payload.connectorId}: ${payload.status}`,
-              );
-
-              this.chargeStateService.updateConnector(chargePointId, {
-                connectorId: payload.connectorId,
-                status: payload.status,
-                errorCode: payload.errorCode,
-                updatedAt: new Date(),
-              });
-
-              socket.send(JSON.stringify([3, messageId, {}]));
-              break;
-            case 'Authorize':
-              {
-                console.log(`${chargePointId} Authorize: ${payload.idTag}`);
-
-                this.sendCallResult(socket, messageId, {
-                  idTagInfo: {
-                    status: 'Available',
-                  },
-                });
-              }
-              break;
-            case 'StartTransaction':
-              {
-                const transactionId = this.transactionId++;
-                console.log(
-                  `Start transaction from: ${chargePointId} for connector: ${payload.connectorId}`,
-                );
-
-                this.sendCallResult(socket, messageId, {
-                  idTagInfo: {
-                    status: 'Accepted',
-                    transactionId: transactionId,
-                  },
-                });
-              }
-              break;
-          }
-        }
+        void this.handleMessage(chargePointId, socket, data.toString()).catch(
+          (error) => {
+            console.error(`${chargePointId} Failed to handle message:`, error);
+          },
+        );
       });
 
       socket.on('close', () => {
