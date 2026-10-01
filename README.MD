@@ -242,7 +242,7 @@ Ne projektin prove eshte implementuar nje subset i komandave OCPP:
 | StopTransaction        | Karikues → CMS | Raporton perfundimin e tranzaksionit                     |
 | Authorize | Karikues → CMS | Kerkon autorizimin e nje idTag |
 
-## 5. Proposed Architecture
+## 5. Arkitektura e Propozuar
 
 Per kete sistem do te nisja me nje arkitekture te thjeshte: nje aplikacion klient, nje backend NestJS dhe nje databaze PostgreSQL. Backend-i do te komunikoje me aplikacionin permes HTTP dhe me stacionet e karikimit permes OCPP mbi WebSocket.
 
@@ -325,7 +325,7 @@ Databaza nuk e zgjidh vete komunikimin me pajisjen. Nese backend-i riniset gjate
 
 **Pyetje per diskutim:** A duhet te ruajme cdo matje te marre, apo vetem disa prej tyre? Cfare informacioni duhet te kemi per te rikuperuar nje seance pas restart-it?
 
-## Core System Flows
+## Rrjedha e Sistemit
 
 ### Lidhja e karikuesit
 
@@ -422,7 +422,7 @@ sequenceDiagram
 
 Seanca duhet te shenohet e perfunduar nga informacioni i karikuesit, jo vetem nga shtypja e butonit Stop. Ajo mund te perfundoje edhe nga nje veprim lokal, pa nje kerkese nga aplikacioni.
 
-## Backend / OCPP Design
+## Backend / OCPP 
 
 ### Si do te organizohej komunikimi
 
@@ -460,7 +460,7 @@ Nese komanda nuk merr pergjigje, do t'i tregoja perdoruesit qe rezultati nuk u k
 
 **Pyetje te hapura:** Si dallojme nje kerkese te perseritur nga nje kerkese e re? Sa duhet te jete timeout-i? Si duhet te reagojme kur StartTransaction vjen me vone, pasi perdoruesit i eshte shfaqur nje gabim?
 
-## Data & Persistence Design
+## Dezanj i Databazes
 
 ### Modeli fillestar i te dhenave
 
@@ -615,7 +615,7 @@ CP_001 Authorize: TEST
 CP_001 connector 1: Preparing
 ```
 
-Per te ndjekur nje rrjedhe te plote ne te ardhmen, log-et duhet te kene fusha te qendrueshme. Shembulli me poshte eshte **format i propozuar, jo log i prodhuar nga implementimi aktual**:
+Per te ndjekur nje rrjedhe te plote ne te ardhmen, log-et duhet te kene fusha te qendrueshme. Shembulli me poshte eshte **format i propozuar**.
 
 ```json
 {
@@ -632,20 +632,7 @@ Per te ndjekur nje rrjedhe te plote ne te ardhmen, log-et duhet te kene fusha te
 
 Duhet dalluar `messageId` i frame-it, `commandId` i kerkeses se aplikacionit dhe `transactionId` i seances OCPP. Ato nuk jane e njejta ID.
 
-### 10.3 Screenshot-et qe mungojne
-
-| Pamja qe duhet shtuar | Cfare duhet te jete e dukshme | Cfare provon |
-| --- | --- | --- |
-| Frontend + Network | Matjet dhe kerkesat periodike me timestamp | Backend → UI dhe polling |
-| Rrjedha e plote stop | RemoteStopTransaction, StopTransaction, statusi final | Dallimin midis komandes dhe perfundimit |
-| Gabimi i fshirjes se tranzaksionit | ID-ja e derguar, key i Map-it, rezultati i delete | Bug-un konkret te seances |
-| Stop pa seance | HTTP status dhe body ne Network | Bug-un `return` kundrejt `throw` |
-| Rilidhja | CP_001 shkëputet/rilidhet dhe gjendja ne UI | Menaxhimin e lidhjes |
-| Restart gjate seances | Para/pas restart-it, seanca ne simulator dhe lista nga API | Humbjen e gjendjes ne memorie |
-
-Nuk ka screenshot-e qe provojnë database, siguri ose load balancing, sepse keto pjese nuk jane implementuar. Per to duhen perdorur diagramet e propozuara. Per screenshot-et e reja duhen hequr kredencialet ose te dhenat personale, nese shfaqen.
-
-### 10.4 Arkitektura dhe kontrata e implementimit prove
+### 10.3 Arkitektura dhe kontrata e implementimit prove
 
 Pjesa e mesiperme pershkruan arkitekturen fillestare te propozuar dhe pyetjet e saj te hapura. Ne proof of concept eshte realizuar nje pjese me e vogel e kesaj arkitekture, me nje proces dhe gjendje ne memorie.
 
@@ -667,7 +654,7 @@ flowchart TB
     end
 ```
 
-Emri `ConnectionManagerServie` ne diagram eshte ai qe gjendet aktualisht ne kod. Ky service ruan referencat e socket-eve; `ChargeStateService` ruan gjendjen qe do te ekspozohet ne API. Nje WebSocket nuk serializohet per frontend-in.
+Emri `ConnectionManagerService` ne diagram eshte ai qe gjendet aktualisht ne kod. Ky service ruan referencat e socket-eve; `ChargeStateService` ruan gjendjen qe do te ekspozohet ne API. Nje WebSocket nuk serializohet per frontend-in.
 
 | Komponenti | Pergjegjesia aktuale | Kufizimi |
 | --- | --- | --- |
@@ -694,23 +681,23 @@ Route-i stop perdor konektorin, jo nje `transactionId` te derguar nga UI-ja. Kjo
 
 MeterValues ruan vetem grupin me timestamp me te ri per konektor. Nuk ruhet ende historia ose snapshot i pavarur per secilin measurand. Nese matjet vijne para StatusNotification, konektori krijohet me gjendje `Unknown`; statusi pasues bashkohet me te dhenat ekzistuese. UI-ja shfaq timestamp-in e matjes vecmas kohes se statusit.
 
-### 10.5 Screenshot-et e implementimit prove
+### 10.4 Screenshot-et e implementimit prove
 
 ![Lidhja WebSocket dhe marrja e BootNotification](images/ws-connection.png)
 
-Figura 1: evidenca ekzistuese tregon URL-ne `/ocpp/CP_001`, protokollin dhe frame-in hyres. Nuk provon autentikim te pajisjes.
+Figura 1: evidenca ekzistuese tregon URL-ne `/ocpp/CP_001`, protokollin dhe frame-in hyres.
 
 ![Pergjigjja BootNotification me ID te njejte](images/bootnotification.png)
 
-Figura 2: ne screenshot shihet `Accepted`, `currentTime` dhe `interval: 60`. Kodi aktual kthen `interval: 10`; figura dokumenton nje version te meparshem. Log-u i shkeputjes ne fund nuk mjafton per te percaktuar shkakun e saj.
+Figura 2: ne screenshot shihet `Accepted`, `currentTime` dhe `interval: 60`. Kodi aktual kthen `interval: 10`; figura dokumenton nje version te meparshem.
 
 ![Authorize dhe StartTransaction ne simulator dhe backend](images/authorize_transaction.png)
 
-Figura 3: shihen `idTag: TEST`, `connectorId: 1`, `meterStart` dhe timestamp-i i StartTransaction. Pranimi i `TEST` nga kodi aktual eshte sjellje prove, jo autorizim real.
+Figura 3: shihen `idTag: TEST`, `connectorId: 1`, `meterStart` dhe timestamp-i i StartTransaction. P
 
 ![MeterValues ne trafikun e simulatorit dhe log-et e backend-it](images/startTransaction_metervalues.png)
 
-Figura 4: shihen mesazhe periodike MeterValues dhe fusha si energjia, fuqia dhe SoC. Kjo figure provon marrjen/logimin ne ate faze; nuk provon ruajtjen ne database ose shfaqjen ne frontend-in e ri.
+Figura 4: shihen mesazhe periodike MeterValues dhe fusha si energjia, fuqia dhe SoC. Kjo figure provon marrjen/logimin ne ate faze;
 
 ## 11. Testimi dhe Problemet e Hasura
 
@@ -723,7 +710,6 @@ Keto vijne nga shenimet e meparshme te projektit dhe nga ndryshimet e bera gjate
 | Serveri WebSocket inicializohej dy here dhe zinte te njejtin port | Service-i duhet te kete nje instance te perbashket ne modul | I dokumentuar ne backend/NOTES.md; wiring aktual eksporton service-t nga OcppModule |
 | Dergimi i komandes trajtohej sikur ishte edhe rezultati | WebSocket send nuk eshte pergjigje OCPP | Tani ka Promise dhe pendingRequests me messageId |
 | CALL-e pa pergjigje bllokonin rrjedhen e pritur | Klienti pret CALLRESULT ose CALLERROR | Veprimet e implementuara pergjigjen; action-et e panjohura mbeten problem |
-| Fusha e kohes ne BootNotification ishte shkruar `currenTime` | Typo ne payload | Kodi aktual perdor `currentTime` dhe `interval` |
 | Connector Map nuk eshte JSON array | Strukturat e memories ndryshojne nga DTO-t e API-se | Controller-i perdor Array.from per konektoret |
 | StatusNotification mund te zevendesonte te gjithe objektin e konektorit | Do te humbnin matjet e ruajtura | updateConnector bashkon gjendjen e vjeter me statusin e ri |
 
@@ -743,14 +729,6 @@ this.transactions.set(this.transactionId, {
 
 `transactionId` lokal ka vleren e vjeter, ndersa `this.transactionId` eshte rritur. Tranzaksioni i pare dergohet si ID `0`, por ruhet nen key `1`. `getActiveTransaction` mund ta gjeje sepse kontrollon vlerat e Map-it; `StopTransaction` perdor `delete(request.transactionId)` dhe nuk e fshin entry-n e sakte.
 
-Riprodhimi i izoluar i ketyre operacioneve gjate pergatitjes se dokumentit dha:
-
-```json
-{"sentTransactionId":0,"storedMapKey":1,"deleteBySentId":false,"remainingTransactions":1}
-```
-
-Ky eshte rezultat real i nje prove te vogel te logjikes, jo log i nje karikuesi fizik. Me disa seanca pasoja mund te jete edhe fshirja e nje entry-je tjeter qe rastis te kete ate key. Permiresimi eshte perdorimi i se njejtes ID lokale ne Map, ne objekt dhe ne pergjigje. Duhet testuar cikli start-stop-start dhe dy konektore/paralelizmi. Kodi nuk eshte ndryshuar si pjese e ketij dokumenti.
-
 ### 11.3 Bug: NotFoundException kthehet si rezultat normal
 
 Ne route-in stop gjendet:
@@ -763,32 +741,8 @@ Nje exception duhet hedhur me `throw` qe te trajtohet nga shtresa e gabimeve te 
 
 Permiresimi i propozuar eshte HTTP 404 per mungesen e seances dhe nje forme e qendrueshme e gabimit. Duhet kontrolluar veçmas edhe karikuesi i panjohur dhe konektori i pavlefshem.
 
-### 11.4 Probleme te tjera te hapura nga leximi i kodit
 
-| Gjetja | Pasoja | Cfare duhet bere |
-| --- | --- | --- |
-| Counter lokal per transactionId | Riperdorim ID-sh pas restart-it ose midis instancave | Gjenerim persistent dhe i koordinuar |
-| `Authorize` dhe StartTransaction pranojne gjithmone | Cdo idTag mund te perdoret ne prove | Policy reale per idTag/perdorues/seance |
-| `StopTransaction` fshin vetem sipas ID-se | Nuk verifikohet qe seanca i perket pajisjes qe e dergoi | Kontroll i chargePointId dhe ruajtje e mbylljes |
-| Nuk ka default ne switch per action-e te panjohura | CALL mbetet pa pergjigje | CALLERROR i pershtatshem per action te pambeshtetur |
-| Payload-et perdorin type assertions | Input i gabuar mund te prishe handler-in | Schema validation ne runtime |
-| `StopTransaction.response` lidhet me tipin RemoteStopTransactionResponse | Tipi kerkon status, por handler-i dergon `{}` | Tip i vecante dhe perputhje action-response |
-| `sendCallResult` shpesh thirret pa action specifik | Union i gjere mund te mos kape payload-in e gabuar | Lidhje me e forte e handler-it me action-in |
-| Status/error unions jane te paplota | P.sh. simulatori dergon `Finishing`, i cili mungon ne union | Perputhje me skemen OCPP, pa pretenduar validim nga cast-i |
-| Timer-i i komandes nuk anulohet pas pergjigjes | Callback mbetet deri ne 10 sekonda, pastaj nuk ben pune | Per ngarkese me te madhe, lifecycle i qarte i pending requests |
-| Mbyllja e socket-it nuk refuzon menjehere pending requests | HTTP pret deri ne timeout | Politike e dokumentuar per disconnect dhe rezultat te pasigurt |
-| `socket.send` nuk trajton callback-un e gabimit | Deshtimi i transportit mund te shihet vetem si timeout | Trajtim i send failure pa e ngaterruar me refuzim biznesi |
-| Lidhja e re zevendeson Map-in, por e vjetra mbetet aktive | Lidhja e vjeter mund te dergoje ende CALL qe ndryshojne gjendjen | Kontroll i lidhjes aktive dhe mbyllje e asaj te vjeter |
-| URL ndahet vetem me `split('/')` | Query string ose path i gabuar mund te behet pjese e identitetit | Parsing i URL-se dhe validim i endpoint-it |
-| Timestamp i pavlefshem ose shume ne te ardhmen | Mund te bllokoje zgjedhjen e matjeve te reja | Validim kohe, receivedAt dhe trajtim i clock drift |
-| Nuk ruhet historia e matjeve | Nuk rindertohet grafiku ose auditimi i nje seance | Persistence dhe retention policy |
-| UI shfaq `Reading` dhe njesi bosh kur mungojne fushat | Paraqitja nuk normalizon default-et e protokollit | Normalizim sipas skemes perpara llogaritjeve |
-
-Keto jane gjetje nga inspektimi i kodit. Pervec riprodhimit te izoluar te key-t te tranzaksionit, nuk pretendohet qe secila u riprodhua ne nje prove end-to-end gjate shkrimit te dokumentit.
-
-### 11.5 Cfare duhet testuar
-
-Ne gjendjen e inspektuar, testi unit i ruajtur ne `backend/src` kontrollon `Hello World!`. Edhe testi e2e ekzistues mbulon route-in baze. Kjo nuk perben mbulim te rrjedhave OCPP. Build-i ose nje screenshot i suksesshem nuk verteton menaxhimin e deshtimeve.
+### 11.4 Cfare duhet testuar
 
 | Prova | Rezultati qe duhet kontrolluar |
 | --- | --- |
@@ -829,58 +783,3 @@ Puna qe mbetet perqendrohet te saktesia e seancave dhe deshtimet e rrjetit. Back
 
 Hapi me i vlefshem pas demonstrimit eshte te perfundohet dhe testohet nje cikel i besueshem start-stop-start, pastaj te ruhet ky cikel ne database. Arkitektura me disa instanca duhet te ndertohet mbi kete baze, jo te fshehe problemet e saktesise qe ekzistojne sot.
 
-## 14. Pergatitja per Neser
-
-### 14.1 Plan studimi me prioritet
-
-Nese kam rreth 3 ore ne dispozicion, do t'i ndaja keshtu:
-
-| Koha | Tema | Ushtrimi konkret |
-| --- | --- | --- |
-| 35 minuta | OCPP frames dhe rrjedha e seances | Vizatoj pa shenime Boot → RemoteStart → StartTransaction → MeterValues → RemoteStop → StopTransaction |
-| 30 minuta | Kodi i backend-it dhe bug-et | Shpjegoj sendCall, Promise, pendingRequests dhe riprodhoj ne leter gabimin e transactionId |
-| 30 minuta | Autentikim dhe autorizim | Shpjegoj pse login, idTag, ID-ja ne URL dhe CORS kane role te ndryshme |
-| 30 minuta | Bazat e databazes | Vizatoj tabelat dhe lidhjet e tyre; shpjegoj cfare duhet te ruhet pas nje restart-i |
-| 25 minuta | Kufizimet e arkitektures | Vizatoj dy instanca dhe shpjegoj problemin kur socket-i eshte ne njeren dhe kerkesa HTTP ne tjetren |
-| 30 minuta | Prova e prezantimit | Kaloj demonstrimin, pergatis screenshot-et qe mungojne dhe shpjegoj kufizimet pa pretenduar production readiness |
-
-Nese kam vetem 45 minuta: 15 minuta rrjedha start/stop, 10 minuta dy bug-et konkrete, 10 minuta autorizimi dhe 10 minuta problemi i dy instancave. Keto lidhen direkt me projektin dhe kane me shume vlere per neser sesa te mesoj te gjitha komandat OCPP ose nje platforme deployment-i nga fillimi.
-
-### 14.2 Pyetje qe duhet t'u pergjigjem pa lexuar kodin
-
-1. **Pse WebSocket?** Karikuesi hap nje lidhje te vazhdueshme dhe te dyja palet mund te nisin komanda; backend-i nuk ka nevoje te hape nje lidhje te re drejt pajisjes per cdo veprim.
-2. **Pse nuk lidhet frontend-i direkt me karikuesin?** Backend-i duhet te zbatoje kontrollin e aksesit, te mbaje seancat dhe te koordinoje komunikimin.
-3. **A do te thote Accepted qe makina po karikohet?** Jo. Duhet te ndiqen StartTransaction, statuset dhe matjet.
-4. **Cili eshte ndryshimi mes messageId dhe transactionId?** I pari perputh CALL me pergjigjen; i dyti identifikon tranzaksionin OCPP.
-5. **Cfare ndodh pas nje timeout-i?** Backend-i nuk mori pergjigje ne kohe; rezultati fizik mund te jete ende i panjohur.
-6. **Pse nuk mjafton nje retry?** Komanda mund te jete ekzekutuar; duhet kontrolluar gjendja perpara se te dergohet perseri.
-7. **Cfare humbet ne restart sot?** Socket-et, gjendja, seancat, pending requests dhe counter-i lokal.
-8. **Pse nuk mjafton nje database e perbashket per dy backend-e?** Ajo ndan te dhenat, por socket-i mbetet ne procesin qe ka lidhjen me karikuesin.
-9. **Pse nuk mjafton login-i?** Identifikon perdoruesin, por duhet kontrolluar edhe nese seanca i perket atij.
-10. **Si provohet qe sistemi shkallezohet?** Me load tests dhe metrika; numri i Map-eve ose perdorimi i Node.js nuk jane benchmark.
-11. **Cfare provon simulatori?** Rrjedhen e implementuar me ate simulator, jo sjelljen e cdo karikuesi ose certifikim OCPP.
-12. **Cfare do te ndryshoja fillimisht?** Bug-u i tranzaksionit dhe kontrata stop, pastaj autorizimi dhe persistence.
-
-### 14.3 Rradha e demonstrimit
-
-1. Hap diagramin e arkitektures aktuale dhe shpjego dy portat: HTTP dhe OCPP.
-2. Lidh simulatorin me `ws://localhost:9000/ocpp/CP_001` dhe `ocpp1.6`.
-3. Trego BootNotification dhe nje CALLRESULT me te njejten ID.
-4. Hap frontend-in, kontrollo qe origin-i perputhet me CORS-in dhe nis nje seance.
-5. Trego diferencen mes Accepted, StartTransaction dhe matjeve ne UI.
-6. Kerko stop dhe krahaso ID-te. Shpjego bug-un e hapur nese nuk eshte rregulluar perpara demonstrimit.
-7. Mbyll me diagramin e dy instancave dhe pyetjet qe ka lene te hapura arkitektura.
-
-Per rezervë, mbaj screenshot-et ekzistuese dhe shto pamjet e UI-se/stop-it. Nese demo live deshton, shpjego hapin ku ndaloi dhe log-un perkates; mos e paraqit screenshot-in historik si prove te versionit aktual.
-
-### 14.4 Burime per studim
-
-- Per versionet dhe kufirin CP–CMS: [Open Charge Alliance — OCPP](https://openchargealliance.org/protocols/open-charge-point-protocol/).
-- Per frame-et dhe payload-et: specifikimi dhe JSON schemas OCPP 1.6-J qe perdor projekti; krahasoji me `OcppActionMap`, sidomos StartTransaction dhe StopTransaction.
-- Per sigurine e pajisjes: [OCPP 1.6 Security Whitepaper](https://openchargealliance.org/ocpp-info-whitepapers/ocpp-1-6-security-whitepaper-4th-edition/).
-- Per kontrollin e aksesit HTTP: [NestJS Authorization](https://docs.nestjs.com/security/authorization).
-- Per `throw` dhe status codes: [NestJS Exception filters](https://docs.nestjs.com/exception-filters).
-- Per lifecycle te socket-it, upgrade, ping/pong dhe close: [ws API](https://github.com/websockets/ws/blob/master/doc/ws.md).
-- Per dallimin mes tipit dhe validimit: [TypeScript Type Assertions](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#type-assertions).
-
-Burimi kryesor per sjelljen e proof of concept mbetet kodi i ketij repository. Arkitektura e propozuar eshte nje pike fillestare per diskutim. Disa vendime jane te thjeshta dhe te arsyetuara, ndersa problemet me te veshtira jane lene si pyetje per studim dhe konsultim me ekipin. Ajo nuk paraqet funksionalitete te realizuara ne proof of concept.
