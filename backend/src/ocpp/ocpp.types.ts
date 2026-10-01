@@ -90,10 +90,10 @@ export interface StartTransactionRequest {
 
 export interface StartTransactionTag {
   status: 'Accepted' | 'Blocked' | 'Expired' | 'Invalid' | 'ConcurrentTx';
-  transactionId: number;
 }
 
 export interface StartTransactionResponse {
+  transactionId: number;
   idTagInfo: StartTransactionTag;
 }
 

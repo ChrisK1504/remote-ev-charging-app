@@ -1,4 +1,10 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { WebSocket, WebSocketServer } from 'ws';
 import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerServie } from './connection-manager.service';
@@ -18,19 +24,19 @@ import {
   StartTransactionRequest,
   StartTransactionResponse,
   StatusNotificationRequest,
-  StatusNotificationResponse,
   StopTransactionRequest,
 } from './ocpp.types';
 
 interface PendingRequest {
   resolve: (payload: unknown) => void;
   reject: (error: Error) => void;
+  socket: WebSocket;
 }
 
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
-  private transactionId: number = 1;
+  private transactionId: number = 0;
   private readonly pendingRequests = new Map<string, PendingRequest>();
   private readonly transactions = new Map<number, ActiveTransaction>();
 
@@ -39,6 +45,31 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     private readonly connectionManagerService: ConnectionManagerServie,
   ) {}
 
+  getActiveTransaction(chargePointId: string, connectorId: number) {
+    console.log(this.transactions.values());
+    const transaction = [...this.transactions.values()].find(
+      (transaction) =>
+        transaction.chargePointId === chargePointId &&
+        transaction.connectorId === connectorId,
+    );
+    console.log(transaction);
+    return transaction;
+  }
+
+  remoteStartTransaction(
+    chargePointId: string,
+    payload: RemoteStartTransactionRequest,
+  ) {
+    return this.sendCall(chargePointId, 'RemoteStartTransaction', payload);
+  }
+
+  remoteStopTransaction(
+    chargePointId: string,
+    payload: RemoteStopTransactionRequest,
+  ) {
+    return this.sendCall(chargePointId, 'RemoteStopTransaction', payload);
+  }
+
   private async sendCall<A extends keyof OcppActionMap>(
     chargePointId: string,
     action: A,
@@ -46,8 +77,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<OcppActionMap[A]['response']> {
     const socket = this.connectionManagerService.get(chargePointId);
 
-    if (!socket) {
-      throw new Error(`Charge point ${chargePointId} is not connected`);
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      throw new ServiceUnavailableException(
+        `Charge point ${chargePointId} is not connected`,
+      );
     }
 
     const messageId = randomUUID();
@@ -70,6 +103,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
           resolve(payload as OcppActionMap[A]['response']);
         },
         reject,
+        socket,
       });
       socket.send(JSON.stringify(message));
 
@@ -88,7 +122,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
   private sendCallResult<A extends keyof OcppActionMap>(
     socket: WebSocket,
-    messageId,
+    messageId: string,
     payload: OcppActionMap[A]['response'],
   ): void {
     const response = [3, messageId, payload];
@@ -96,10 +130,14 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     socket.send(JSON.stringify(response));
   }
 
-  private handleCallResult(messageId: string, payload: unknown): void {
+  private handleCallResult(
+    socket: WebSocket,
+    messageId: string,
+    payload: unknown,
+  ): void {
     const pending = this.pendingRequests.get(messageId);
 
-    if (!pending) {
+    if (!pending || pending.socket !== socket) {
       console.warn(`No pending requests for ${messageId}`);
       return;
     }
@@ -121,7 +159,11 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Invalid OCPP message');
     }
 
-    const [messageTypeId, messageId, actionOrPayload, payload] = message;
+    const [messageTypeId, messageId, actionOrPayload, payload] =
+      message as unknown[];
+    if (typeof messageId !== 'string') {
+      throw new Error('Invalid OCPP message ID');
+    }
 
     if (messageTypeId === 2) {
       const action = actionOrPayload;
@@ -141,19 +183,6 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
 
             this.sendCallResult(socket, messageId, response);
             console.log('BootNotification accepted');
-
-            const remoteStartRequest: RemoteStartTransactionRequest = {
-              connectorId: 1,
-              idTag: 'TEST',
-            };
-
-            const result = await this.sendCall(
-              chargePointId,
-              'RemoteStartTransaction',
-              remoteStartRequest,
-            );
-
-            console.log(`RemoteStartTransaction result: `, result);
           }
           break;
         case 'Heartbeat':
@@ -201,8 +230,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
         case 'StartTransaction':
           {
             const request = payload as StartTransactionRequest;
+
+            const transactionId = this.transactionId++;
             this.transactions.set(this.transactionId, {
-              transactionId: this.transactionId,
+              transactionId: transactionId,
               chargePointId: chargePointId,
               connectorId: request.connectorId,
               idTag: request.idTag,
@@ -210,18 +241,19 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               startedAt: request.timestamp,
             });
 
+            console.log(this.transactions.values());
+
             console.log(
               `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
             );
 
             const response: StartTransactionResponse = {
+              transactionId: transactionId,
               idTagInfo: {
                 status: 'Accepted',
-                transactionId: this.transactionId,
               },
             };
 
-            this.transactionId++;
             this.sendCallResult(socket, messageId, response);
           }
           break;
@@ -237,6 +269,31 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
             this.sendCallResult(socket, messageId, {});
           }
           break;
+        case 'MeterValues': {
+          console.log(`${chargePointId} MeterValues:`, JSON.stringify(payload));
+
+          this.sendCallResult(socket, messageId, {});
+
+          break;
+        }
+      }
+      return;
+    }
+
+    if (
+      messageTypeId === OcppMessageType.CallError &&
+      typeof messageId === 'string'
+    ) {
+      const pending = this.pendingRequests.get(messageId);
+      if (pending?.socket === socket) {
+        this.pendingRequests.delete(messageId);
+        pending.reject(
+          new BadGatewayException({
+            message: 'Charger returned an OCPP error',
+            errorCode: actionOrPayload,
+            description: payload,
+          }),
+        );
       }
       return;
     }
@@ -244,7 +301,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     if (messageTypeId === 3) {
       const payload = actionOrPayload;
 
-      this.handleCallResult(messageId, payload);
+      this.handleCallResult(socket, messageId, payload);
       return;
     }
   }
@@ -279,21 +336,33 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       console.log('Protocol:', socket.protocol);
 
       socket.on('message', (data) => {
-        void this.handleMessage(chargePointId, socket, data.toString()).catch(
-          (error) => {
-            console.error(`${chargePointId} Failed to handle message:`, error);
-          },
-        );
+        const buffer = Array.isArray(data)
+          ? Buffer.concat(data)
+          : Buffer.isBuffer(data)
+            ? data
+            : Buffer.from(data);
+        void this.handleMessage(
+          chargePointId,
+          socket,
+          buffer.toString('utf8'),
+        ).catch((error) => {
+          console.error(`${chargePointId} Failed to handle message:`, error);
+        });
       });
 
       socket.on('close', () => {
         console.log('Charge point disconnected');
-        this.chargeStateService.disconnect(chargePointId);
+        if (this.connectionManagerService.get(chargePointId) === socket) {
+          this.connectionManagerService.remove(chargePointId);
+          this.chargeStateService.disconnect(chargePointId);
+        }
       });
 
       socket.on('error', (error) => {
         console.error('WebSocket error:', error);
-        this.chargeStateService.disconnect(chargePointId);
+        if (this.connectionManagerService.get(chargePointId) === socket) {
+          this.chargeStateService.disconnect(chargePointId);
+        }
       });
     });
   }

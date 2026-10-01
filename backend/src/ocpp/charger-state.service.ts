@@ -39,6 +39,10 @@ export class ChargeStateService {
     chargePoint.connectors.set(connectorState.connectorId, connectorState);
   }
 
+  getAll(): ChargePointState[] {
+    return Array.from(this.chargePoints.values());
+  }
+
   get(chargePointId: string): ChargePointState | undefined {
     return this.chargePoints.get(chargePointId);
   }

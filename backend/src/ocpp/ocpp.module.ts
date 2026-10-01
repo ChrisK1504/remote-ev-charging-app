@@ -5,6 +5,6 @@ import { ConnectionManagerServie } from './connection-manager.service';
 
 @Module({
   providers: [OcppServerService, ChargeStateService, ConnectionManagerServie],
-  exports: [OcppServerService],
+  exports: [OcppServerService, ChargeStateService],
 })
 export class OcppModule {}
