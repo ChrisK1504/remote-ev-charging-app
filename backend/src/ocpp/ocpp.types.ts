@@ -63,6 +63,15 @@ export interface StatusNotificationRequest {
 
 export type StatusNotificationResponse = {};
 
+export interface ActiveTransaction {
+  transactionId: number;
+  chargePointId: string;
+  connectorId: number;
+  idTag: string;
+  meterStart: number;
+  startedAt: string;
+}
+
 export interface RemoteStartTransactionRequest {
   idTag: string;
   connectorId?: number;
@@ -76,7 +85,7 @@ export interface StartTransactionRequest {
   connectorId: number;
   idTag: string;
   meterStart: number;
-  timeStamp: string;
+  timestamp: string;
 }
 
 export interface StartTransactionTag {
@@ -88,6 +97,19 @@ export interface StartTransactionResponse {
   idTagInfo: StartTransactionTag;
 }
 
+export interface RemoteStopTransactionRequest {
+  transactionId: number;
+}
+
+export interface RemoteStopTransactionResponse {
+  status: 'Accepted' | 'Rejected';
+}
+
+export interface StopTransactionRequest {
+  meterStop: number;
+  timestamp: string;
+  transactionId: number;
+}
 export interface OcppActionMap {
   BootNotification: {
     request: BootNotificationRequest;
@@ -118,4 +140,16 @@ export interface OcppActionMap {
     request: StartTransactionRequest;
     response: StartTransactionResponse;
   };
+
+  RemoteStopTransaction: {
+    request: RemoteStopTransactionRequest;
+    response: RemoteStopTransactionResponse;
+  };
+
+  StopTransaction: {
+    request: StopTransactionRequest;
+    response: RemoteStopTransactionResponse;
+  }
+
+
 }

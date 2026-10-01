@@ -4,6 +4,7 @@ import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerServie } from './connection-manager.service';
 import { randomUUID } from 'crypto';
 import {
+  ActiveTransaction,
   AuthorizeRequest,
   AuthorizeResponse,
   BootNotificationRequest,
@@ -12,10 +13,13 @@ import {
   OcppActionMap,
   OcppCall,
   OcppMessageType,
+  RemoteStartTransactionRequest,
+  RemoteStopTransactionRequest,
   StartTransactionRequest,
   StartTransactionResponse,
   StatusNotificationRequest,
   StatusNotificationResponse,
+  StopTransactionRequest,
 } from './ocpp.types';
 
 interface PendingRequest {
@@ -28,6 +32,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
   private transactionId: number = 1;
   private readonly pendingRequests = new Map<string, PendingRequest>();
+  private readonly transactions = new Map<number, ActiveTransaction>();
 
   constructor(
     private readonly chargeStateService: ChargeStateService,
@@ -104,7 +109,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async handleMessage(
-    chargePointId,
+    chargePointId: string,
     socket: WebSocket,
     rawMessage: string,
   ): Promise<void> {
@@ -137,16 +142,18 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
             this.sendCallResult(socket, messageId, response);
             console.log('BootNotification accepted');
 
+            const remoteStartRequest: RemoteStartTransactionRequest = {
+              connectorId: 1,
+              idTag: 'TEST',
+            };
+
             const result = await this.sendCall(
               chargePointId,
               'RemoteStartTransaction',
-              {
-                connectorId: 1,
-                idTag: 'TEST',
-              },
+              remoteStartRequest,
             );
 
-            console.log(`BootNotification result: `, result);
+            console.log(`RemoteStartTransaction result: `, result);
           }
           break;
         case 'Heartbeat':
@@ -175,11 +182,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               updatedAt: new Date(),
             });
 
-            this.sendCallResult(
-              socket,
-              messageId,
-              {} as StatusNotificationResponse,
-            );
+            this.sendCallResult(socket, messageId, {});
           }
           break;
         case 'Authorize':
@@ -197,9 +200,16 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
           break;
         case 'StartTransaction':
           {
-            const transactionId = this.transactionId++;
-
             const request = payload as StartTransactionRequest;
+            this.transactions.set(this.transactionId, {
+              transactionId: this.transactionId,
+              chargePointId: chargePointId,
+              connectorId: request.connectorId,
+              idTag: request.idTag,
+              meterStart: request.meterStart,
+              startedAt: request.timestamp,
+            });
+
             console.log(
               `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
             );
@@ -207,11 +217,24 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
             const response: StartTransactionResponse = {
               idTagInfo: {
                 status: 'Accepted',
-                transactionId: transactionId,
+                transactionId: this.transactionId,
               },
             };
 
+            this.transactionId++;
             this.sendCallResult(socket, messageId, response);
+          }
+          break;
+        case 'StopTransaction':
+          {
+            const request: StopTransactionRequest =
+              payload as StopTransactionRequest;
+            console.log(
+              `${chargePointId} Stop Transaction: ${JSON.stringify(request)}`,
+            );
+
+            this.transactions.delete(request.transactionId);
+            this.sendCallResult(socket, messageId, {});
           }
           break;
       }
