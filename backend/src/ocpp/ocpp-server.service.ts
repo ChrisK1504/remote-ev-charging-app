@@ -233,7 +233,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
             const request = payload as StartTransactionRequest;
 
             const transactionId = this.transactionId++;
-            this.transactions.set(this.transactionId, {
+            this.transactions.set(transactionId, {
               transactionId: transactionId,
               chargePointId: chargePointId,
               connectorId: request.connectorId,

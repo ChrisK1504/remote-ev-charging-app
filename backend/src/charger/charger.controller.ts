@@ -78,7 +78,7 @@ export class ChargerController {
     );
 
     if (!transaction) {
-      return new NotFoundException(`No active transactions on ${id}`);
+      throw new NotFoundException(`No active transactions on ${id}`);
     }
 
     return this.ocppServerService.remoteStopTransaction(id, {
