@@ -16,6 +16,7 @@ import {
   BootNotificationRequest,
   BootNotificationResponse,
   HeartBeatResponse,
+  MeterValuesRequest,
   OcppActionMap,
   OcppCall,
   OcppMessageType,
@@ -270,9 +271,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
           }
           break;
         case 'MeterValues': {
-          console.log(`${chargePointId} MeterValues:`, JSON.stringify(payload));
+          const request = payload as MeterValuesRequest;
+          this.chargeStateService.updateMeterValues(chargePointId, request);
 
-          this.sendCallResult(socket, messageId, {});
+          this.sendCallResult<'MeterValues'>(socket, messageId, {});
 
           break;
         }

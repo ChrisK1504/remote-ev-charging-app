@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ChargePointState, ConnectorState } from './ocpp.types';
+import {
+  ChargePointState,
+  ConnectorState,
+  MeterValuesRequest,
+} from './ocpp.types';
 
 @Injectable()
 export class ChargeStateService {
@@ -36,7 +40,37 @@ export class ChargeStateService {
       return;
     }
 
-    chargePoint.connectors.set(connectorState.connectorId, connectorState);
+    chargePoint.connectors.set(connectorState.connectorId, {
+      ...chargePoint.connectors.get(connectorState.connectorId),
+      ...connectorState,
+    });
+  }
+
+  updateMeterValues(chargePointId: string, request: MeterValuesRequest): void {
+    const chargePoint = this.chargePoints.get(chargePointId);
+    if (!chargePoint) return;
+
+    const connector = chargePoint.connectors.get(request.connectorId);
+    let latest = connector?.meterValue;
+    for (const reading of request.meterValue) {
+      if (
+        !latest ||
+        Date.parse(reading.timestamp) >= Date.parse(latest.timestamp)
+      ) {
+        latest = reading;
+      }
+    }
+    if (!latest || latest === connector?.meterValue) return;
+
+    chargePoint.connectors.set(request.connectorId, {
+      connectorId: request.connectorId,
+      status: 'Unknown',
+      errorCode: 'Unknown',
+      updatedAt: new Date(),
+      ...connector,
+      meterValue: latest,
+      transactionId: request.transactionId,
+    });
   }
 
   getAll(): ChargePointState[] {

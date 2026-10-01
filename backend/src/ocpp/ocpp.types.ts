@@ -18,6 +18,8 @@ export interface ConnectorState {
   status: string; // Should become an enum
   errorCode: string; // Also an enum
   updatedAt: Date;
+  meterValue?: MeterValue;
+  transactionId?: number;
 }
 
 export interface ChargePointState {
@@ -62,6 +64,26 @@ export interface StatusNotificationRequest {
 }
 
 export type StatusNotificationResponse = {};
+
+export interface SampledValue {
+  value: string;
+  measurand?: string;
+  unit?: string;
+  phase?: string;
+}
+
+export interface MeterValue {
+  timestamp: string;
+  sampledValue: SampledValue[];
+}
+
+export interface MeterValuesRequest {
+  connectorId: number;
+  meterValue: MeterValue[];
+  transactionId?: number;
+}
+
+export type MeterValuesResponse = Record<string, never>;
 
 export interface ActiveTransaction {
   transactionId: number;
@@ -111,6 +133,11 @@ export interface StopTransactionRequest {
   transactionId: number;
 }
 export interface OcppActionMap {
+  MeterValues: {
+    request: MeterValuesRequest;
+    response: MeterValuesResponse;
+  };
+
   BootNotification: {
     request: BootNotificationRequest;
     response: BootNotificationResponse;

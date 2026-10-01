@@ -38,7 +38,7 @@ onModuleInit() {
 3. StatusNotification [DONE]
 4. RemoteStartTransaction  [DONE]   
 5. StartTransaction [DONE]
-6. MeterValues [TODO]
+6. MeterValues [DONE]
 7. RemoteStopTransaction [TODO]  
 8. StopTransaction [TODO]
 9. Authorize [DONE]
@@ -101,4 +101,5 @@ Charge Point reports a connector status or error change.
 - Standard WS should be used to use OCPP .
 - Module wiring caused the websocketservice to be initialized twice, throwing an error by occupying the same port twice.
 - Cannot just make calls to the CP, but have to wait for them to be resolved. Promise API must be used.
+- Unhandled CALL messages can disrupt the communication flow. Every CALL message must be responded to.
 

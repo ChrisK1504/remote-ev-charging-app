@@ -1,0 +1,39 @@
+main {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+section {
+  margin-top: 24px;
+  border-top: 1px solid #ccc;
+}
+
+fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+input {
+  width: 140px;
+}
+
+input[type='number'] {
+  width: 60px;
+}
+
+[role='alert'] {
+  color: #b00020;
+}
+
+table {
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+th, td {
+  text-align: left;
+  padding: 4px 16px 4px 0;
+}
