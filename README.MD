@@ -2,11 +2,11 @@
 
 Ne root te projektit ndodhet nje start.sh bash script i cili ben run te treja instancat, backend, frontend, dhe simulatorin OCPP.
 - *http://localhost:5173*: URL-ja e simulatorit. Fillo duke krijuar nje konfigurim te ri per nje 'charge point'.
-![Ocpp Simulator](ocpp-simulator.png).
+![Ocpp Simulator](images/ocpp-simulator.png).
 CSMS URL duhet te jete : 'ws://localhost:9000/ocpp', dhe kjo 'wss://localhost:9000/ocpp' pasi lidhja nuk permban nje certifikat TLS.
 - *http://localhost:3000*: URL-ja hyrese backend-it.
 - *http://localhost:5174*: Ketu ndodhet frontend-i. 
-![Frontend](frontend.png)
+![Frontend](images/frontend.png)
 Zgjidh nje idTag dhe nje konektor dhe lidhja me backend-in, dhe rrjedhimisht me simulatorin do te kryhet. Vlera metrike duhet te fillojn te shfaqe.
 
 Shtypni Ctrl-C ne terminalin ku niset skriptin per te mbyllur te treja instancat.
@@ -666,15 +666,15 @@ MeterValues ruan vetem grupin me timestamp me te ri per konektor. Nuk ruhet ende
 
 **Figura 4**: shihen mesazhe periodike MeterValues dhe fusha si energjia, fuqia dhe SoC. Kjo figure provon marrjen/logimin ne ate faze;
 
-![Stacioni i karikimit i lidhur, seanca e karikimit ende e pafilluar](para-karikimit.png) 
+![Stacioni i karikimit i lidhur, seanca e karikimit ende e pafilluar](images/para-karikimit.png) 
 
 **Figura 5**: nderfaqja React para fillimit te karikimit. Gjendja e CP_001 dhe konektorit merret nga REST API e backend-it.
 
-![Mbase lidhjes, vlerat metrike po vijn](frontend.png)
+![Mbase lidhjes, vlerat metrike po vijn](images/frontend.png)
 
 **Figura 6**: nderfaqja React pas fillimit te karikimit. Vlerat metrike arrijne, perditesohen cdo dy sekonda.
 
-![Mbase kerkeses per mbyllje te seances, statusi tregohet 'accepting'](pas-mbylljes.png)
+![Mbase kerkeses per mbyllje te seances, statusi tregohet 'accepting'](images/pas-mbylljes.png)
 
 **Figura 7**: nderfaqja React pas kerkeses per mbyllje te seances. Konektori tregon 'Finishing'.
 
