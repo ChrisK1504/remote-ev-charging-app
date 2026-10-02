@@ -132,9 +132,7 @@ Versioni ekzakte i OCPP ne perdorim duhet specifikuar ne nje header 'Sec-Websock
 
 Pas marrjes se kerkeses CMS-i negocion lidhjen dhe versionin. Ne arkitekturen e synuar identiteti duhet kontrolluar kundrejt regjistrit te karikuesve dhe kredencialeve te tyre, perpara se pajisja te lejohet te komunikoje.
 
-Ne kodin aktual kontrollohet vetem qe segmenti i fundit i URL-se te mos jete bosh. Cdo identitet i ri regjistrohet ne memorie. Pra `/ocpp/CP_001` identifikon pajisjen qe pretendon klienti, por nuk provon qe klienti eshte vertet ajo pajisje.
-
-`handleProtocols` zgjedh `ocpp1.6`, por kthimi `false` ne biblioteken `ws` vetem heq header-in e subprotocol-it nga pergjigjja. Nuk duhet trajtuar si kontroll i plote autentikimi ose si garanci qe serveri mbyll vete cdo lidhje pa protokoll te vlefshem. [Dokumentacioni i ws](https://github.com/websockets/ws/blob/master/doc/ws.md).
+Ne kodin aktual kontrollohet vetem qe segmenti i fundit i URL-se te mos jete bosh. Cdo identitet i ri regjistrohet ne memorie. Pra `/ocpp/CP_001` identifikon pajisjen qe pretendon klienti.
 
 #### 4.3.2 Mesazhet OCPP
 
@@ -263,13 +261,16 @@ flowchart LR
 
 Aplikacioni duhet t'i lejoje perdoruesit te beje login, te shohe stacionet e disponueshme dhe te zgjedhe nje konektor. Pas lidhjes se makines, perdoruesi mund te kerkoje fillimin ose ndalimin e karikimit.
 
-Ne UI do te shfaqja statusin e konektorit, seancen aktive dhe matjet e fundit qe ka raportuar karikuesi. Do te shfaqja gjithashtu kohen e perditesimit, sepse nje matje e vjeter nuk duhet te duket sikur eshte marre tani.
-
-Per perditesimin e gjendjes do te nisja me polling, pershembull nje kerkese cdo 2 sekonda kur perdoruesi ka hapur seancen. Kjo eshte e thjeshte per t'u implementuar. Nese numri i perdoruesve rritet, do te shqyrtoja nese backend-i duhet t'i dergoje vete perditesimet, ne vend qe klienti te pyese vazhdimisht.
+Ne UI do te shfaqja statusin e konektorit, seancen aktive dhe matjet e fundit qe ka raportuar karikuesi. Do te shfaqja gjithashtu kohen e perditesimit, sepse nje matje e vjeter nuk duhet te duket sikur eshte marre se fundmi.
 
 Nje gje qe duhet te dallohet ne UI eshte “kerkesa u pranua” nga “karikimi filloi”. Per kete arsye, pas shtypjes se Start do te shfaqja nje gjendje pritjeje derisa te vije informacion nga karikuesi.
 
-**Pyetje per diskutim:** A duhet perdoruesi ta zgjedhe karikuesin nga nje liste apo te skanoje nje QR? Sa shpesh ka kuptim te perditesohen matjet ne ekran?
+Per perditesimin e gjendjes do te nisja me polling, pershembull nje kerkese cdo 2 sekonda kur perdoruesi ka hapur seancen. Kjo eshte e thjeshte per t'u implementuar. 
+
+Ne konsiderate duhet marre shpeshtesia e perditesimit te matjeve. Mund te imagjinojme qe per nje numer te madhe perdoruesish ne te njejten kohe numri i requesteve qe godasin backend-in cdo sekond do te ishte i larte. Keshtu qe duhet shqyrtuar se sa e rendesishme eshte per perdoruesin sasia aktuale e karikimit. Mund te mendojme qe nje perdorues nuk eshte mjaftueshem i vemendshem ndaj sasise se matjes sa te justifikoj procesin e polling ne frekuence te shpeshte. Ne kete raste polling mund te kryhet ne nje period me te gjate, le te themi 5 sekonda ose me teper, per te lehtesuar peshen tek backend-i.
+Nese perdoruesit kerkojne perditesim ne 'real-time', atehere duhet konsideruar nje lidhje e dyte WebSocket midis frontend-it dhe backend-it, ose te bindim perdoruesit qe nje kerkese e tille eshte e panevojshme.
+
+Gjithashtu, nese numri i perdoruesve eshte i konsiderueshem, do te shqyrtoja nese backend-i duhet t'i dergoje vete perditesimet, ne vend qe klienti te beje request-e vazhdimisht.
 
 ### 5.2 NestJS Backend
 
@@ -296,7 +297,9 @@ Per API-ne do te propozoja keto veprime:
 
 Per stop do te preferoja ID-ne e seances ne API. Keshtu behet me e qarte cili karikim po ndalohet. Backend-i e perkthen kete ID ne transactionId qe pret karikuesi.
 
-**Pyetje per diskutim:** A duhet kerkesa HTTP te prese pergjigjen e karikuesit, apo te kthehet menjehere dhe rezultati te lexohet me vone? Pritja eshte me e thjeshte, por nje karikues i ngadalte e mban kerkesen hapur.
+Duhet konsideruar natyra e komunikimit midis frontend dhe backend, me sakte nese komunikimi te ndodh ne menyre sinkrone ose asinkrone.
+Nje qasje sinkrone eshte me e thjeshte per te implementuar, por duhen marre parasysh ngadalesimet ne rrjete, sidomos kur kemi te bejme me pajisje fizike ne distance. Ne raste ngadalesimi, ose timeout-i, perdoruesi qendron duke pritur per perfundimin e request-it. 
+Nje qasje asinkrone do te ishte me e perputhshme ne production, ku perdoruesi i ben request backend-it dhe kerkesa mbyllet menjeher. Frontend-i me pas mund te bej poll per rezultatin, ose backend-i vet mund ta dergoj rezultatin nepermjet SSE, ose nje lidhje websocket e dyte.
 
 ### 5.3 Shtresa OCPP
 
@@ -309,21 +312,22 @@ Do t'i mbaja te ndara pergjegjesite kryesore:
 - Dergimi i komandave dhe perputhja e pergjigjeve me messageId.
 - Kalimi i statusit, seancave dhe matjeve te service-t perkatese.
 
-Per komandat remote duhet pritur CALLRESULT ose CALLERROR. Nje Promise mund te perdoret per kete pritje, me nje timeout qe te mos mbetet e hapur pafund. Timeout-i tregon qe nuk u mor pergjigje ne kohe; nuk provon qe komanda nuk u ekzekutua.
+Per komandat remote duhet pritur CALLRESULT ose CALLERROR. Nje Promise mund te perdoret per kete pritje, me nje timeout qe te mos mbetet e hapur pafund. 
+Timeout-i tregon qe nuk u mor pergjigje ne kohe, jo qe komanda nuk u ekzekutua.
 
 Tipet TypeScript e bejne kodin me te qarte, por te dhenat qe vijne nga pajisja duhet te kontrollohen edhe ne runtime. Pershembull, nje MeterValues pa `meterValue` te vlefshem nuk duhet te perpunohen sikur payload-i te ishte i sakte.
 
-**Pyetje per diskutim:** Cfare duhet bere nese dy lidhje perdorin te njejtin ID karikuesi? Po nese nje pergjigje vjen pasi ka mbaruar timeout-i?
+Duhet konsideruar se si duhet te trajtohet nje lidhje e re, kur nje lidhje me te njejten *chargePointId* tashme ekziston. Kjo mund te ndodhi ne raste mis-konfigurimi, race-conditions.
+Nje qasje do te ishte te mbyllje lidhjen e meparshme dhe te filloje lidhjen e re. Nje qasje tjeter do mund te ishte qe te refuzoje nje lidhje me te njejten ID derisa lidhje ekzistuese te konfirmohet e shkeputur.
 
 ### 5.4 Databaze PostgreSQL
 
-Do te perdorja PostgreSQL per te ruajtur perdoruesit, karikuesit dhe seancat. Arsyeja kryesore eshte qe keto te dhena nuk duhet te humbasin kur backend-i riniset.
+Do te perdorja PostgreSQL per te ruajtur perdoruesit, karikuesit dhe seancat, pronari i tyre, koha e fillimit dhe mbarimit, si dhe matjetet qe duhen per historine. Ne memorie do te mbaheshin lidhjet WebSocket dhe kerkesat qe presin pergjigje. 
 
-Ne memorie do te mbaheshin lidhjet WebSocket dhe kerkesat qe presin pergjigje. Ne databaze do te ruheshin seancat, pronari i tyre, koha e fillimit dhe mbarimit, si dhe matjet qe duhen per historine.
+Nuk do te ruaja domosdoshmerisht cdo vlere metrike qe vin nga stacioni i karikimit, pasi kjo do t'a rriste volumin e databazes jashtemase. Nje metode samplimi do duhej te perdorej, dhe gjithashtu jetegjatesia e tyre ne databaze do te ishte e limituar. 
 
-Databaza nuk e zgjidh vete komunikimin me pajisjen. Nese backend-i riniset gjate nje karikimi, seanca mund te jete e ruajtur por lidhja WebSocket humbet. Duhet te percaktohet si do te lidhet informacioni i ri i karikuesit me seancen ekzistuese.
-
-**Pyetje per diskutim:** A duhet te ruajme cdo matje te marre, apo vetem disa prej tyre? Cfare informacioni duhet te kemi per te rikuperuar nje seance pas restart-it?
+Databaza nuk e zgjidh ne vetvete komunikimin me pajisjen ne raste restarti. Nese backend-i riniset gjate nje karikimi, seanca mund te jete e ruajtur por lidhja WebSocket humbet. 
+Për recovery do të ruaja në PostgreSQL lidhjen mes session ID të aplikacionit, chargePointId, connectorId dhe OCPP transactionId, së bashku me statusin dhe meterStart. Pas restart-it WebSocket-i i vjetër nuk mund të rikuperohe, stacioni i karikimit duhet të rilidhet. Kur fillojnë të vijnë përsëri mesazhet OCPP, backend-i përdor këto identifikues për t'i lidhur me seancën ekzistuese. Gjendjen në databazë do ta konsideroja last-known state, jo domosdoshmërisht gjendjen aktuale të pajisjes.
 
 ## Rrjedha e Sistemit
 
@@ -375,8 +379,6 @@ sequenceDiagram
 ```
 
 Diagrami perdor komandat OCPP 1.6-J. Sipas konfigurimit, karikuesi mund te dergoje edhe Authorize. Backend-i duhet te kontrolloje identifikuesin e karikimit perpara pranimit.
-
-Nje pike qe duhet studiuar me tej eshte si lidhet StartTransaction me kerkesen e duhur te perdoruesit. Duhet te merren parasysh karikuesi, konektori dhe identifikuesi i autorizuar, sidomos kur disa perdorues po perdorin sistemin njekohesisht.
 
 ### Matjet dhe shfaqja ne aplikacion
 
@@ -450,15 +452,13 @@ Kjo ndarje do te me ndihmonte te ndryshoja logjiken e seancave pa ndryshuar cdo 
 | OCPP transactionId | Tranzaksioni qe njeh karikuesi |
 | messageId | Perputh nje CALL me pergjigjen e tij |
 
-Gjithashtu do te ndaja gjendjen e lidhjes nga gjendja e konektorit dhe e seances. Nje karikues mund te humbase internetin, por makina te vazhdoje te karikohet. Nuk do ta shenoja automatikisht seancen te perfunduar vetem sepse socket-i u mbyll.
+Gjithashtu do te ndaja gjendjen e lidhjes nga gjendja e konektorit dhe e seances. Nje karikues mund te humbase internetin, por makina te vazhdoje te karikohet. Nuk do ta shenoja automatikisht seancen te perfunduar vetem sepse socket-i u mbyll. Ne momentin e rilidhjes mund te konfirmohen gjendjen e seances.
 
 ### Rastet qe kerkojne me shume kujdes
 
-Nese perdoruesi shtyp Start dy here, backend-i duhet te kontrolloje nese ka tashme nje kerkese ose seance aktive. Vetem çaktivizimi i butonit ne frontend nuk mjafton. Nese dy kerkesa vijne pothuajse ne te njejten kohe, nje kontroll i thjeshte ne kod mund te mos jete i mjaftueshem; ketu do te kerkoja ndihme per menyren e sakte te kontrollit ne databaze.
+Nese perdoruesi shtyp Start dy here, qellimisht ose jo, backend-i duhet te kontrolloje nese ka tashme nje kerkese ose seance aktive. Vetem çaktivizimi i butonit ne frontend nuk mjafton. Nese dy kerkesa vijne pothuajse ne te njejten kohe, nje kontroll i thjeshte ne kod mund te mos jete i mjaftueshem.
 
-Nese komanda nuk merr pergjigje, do t'i tregoja perdoruesit qe rezultati nuk u konfirmua. Nuk do te beja automatikisht retry te start-it, sepse pajisja mund ta kete marre komanden e pare.
-
-**Pyetje te hapura:** Si dallojme nje kerkese te perseritur nga nje kerkese e re? Sa duhet te jete timeout-i? Si duhet te reagojme kur StartTransaction vjen me vone, pasi perdoruesit i eshte shfaqur nje gabim?
+Nese komanda nuk merr pergjigje, do t'i tregoja perdoruesit qe rezultati nuk u konfirmua. Nuk do te beja automatikisht retry te start-it, sepse pajisja mund ta kete marre komanden e pare. Ne raste se duhet kryer nje perseritje e request-it, ateher do te prezantoja nje *Idempotency-Key* ne API, i gjeneruar nga frontend-i. Nese backend-i merr nje request me te njejtin celes, ateher nuk dergon nje komande te dyte, por kthen rezultatin e komandes se meparshme. Ne kete menyre bejme diferencen midis request-eve te reja dhe ato te perseritura.
 
 ## Dezanj i Databazes
 
@@ -466,11 +466,11 @@ Nese komanda nuk merr pergjigje, do t'i tregoja perdoruesit qe rezultati nuk u k
 
 ```mermaid
 erDiagram
-    USER ||--o{ CHARGING_SESSION : owns
-    CHARGER ||--o{ CONNECTOR : contains
-    CONNECTOR ||--o{ CHARGING_SESSION : hosts
-    CONNECTOR ||--o{ METER_READING : reports
-    CHARGING_SESSION o|--o{ METER_READING : relates
+    USER ||--o{ CHARGING_SESSION : zoteron
+    CHARGER ||--o{ CONNECTOR : permban
+    CONNECTOR ||--o{ CHARGING_SESSION : fillon
+    CONNECTOR ||--o{ METER_READING : krijon
+    CHARGING_SESSION o|--o{ METER_READING : raporton
 ```
 
 | Tabela | Fushat kryesore qe do te ruaja |
@@ -479,11 +479,9 @@ erDiagram
 | Chargers | ID, emri/vendndodhja dhe koha e fundit e komunikimit |
 | Connectors | ID brenda karikuesit, chargerId dhe statusi |
 | ChargingSessions | ID, userId, konektori, transactionId, statusi, fillimi, fundi, meterStart dhe meterStop |
-| MeterReadings | Konektori, seanca nese njihet, timestamp-i, vlera, measurand dhe njesia/faza kur ka |
+| MeterReadings | Konektori, seanca nese njihet, timestamp-i, vlera |
 
 Nje seance e perfunduar nuk duhet te fshihet; ajo duhet te ruhet qe perdoruesi te shohe historine. Lidhja me perdoruesin duhet te jete ne databaze, ne menyre qe autorizimi i stop-it te mos varet nga informacioni qe dergon klienti.
-
-Matjet nuk kane gjithmone transactionId. Per kete arsye, modeli lejon matje te lidhura me konektorin pa nje seance te caktuar. Detajet e ruajtjes se disa sampledValue brenda nje mesazhi do t'i saktesoja gjate projektimit te tabelave.
 
 ### Probleme te mundshme me ruajtjen
 
@@ -493,7 +491,6 @@ Mbetet nje rast i veshtire: backend-i mund ta ruaje kerkesen dhe te ndalet para 
 
 Per matjet do te ruaja kohen e raportuar nga pajisja dhe kohen kur backend-i i mori. Kjo ndihmon kur matjet vijne me vonese. Nje lexim i vjeter mund te kete vlere per historine, por nuk duhet te zevendesoje matjen me te re ne UI.
 
-**Pyetje per diskutim:** Sa histori duhet te ruhet? Si shmangen matjet ose seancat e dyfishuara? Cfare duhet te beje backend-i me seancat qe ne database jane aktive, por pajisja pas rilidhjes raporton nje gjendje tjeter?
 
 ## Scalability & Reliability
 
@@ -501,7 +498,7 @@ Per matjet do te ruaja kohen e raportuar nga pajisja dhe kohen kur backend-i i m
 
 Nje backend i vetem eshte me i thjeshte per t'u ndertuar dhe kuptuar, por ka kufij. Me shume karikues do te kete me shume lidhje WebSocket dhe mesazhe. Me shume perdorues do te kete me shume kerkesa HTTP. Databaza duhet te perballoje te dyja: ruajtjen e matjeve dhe leximet per aplikacionin.
 
-Pershembull, 1,000 perdorues qe bejne polling cdo 2 sekonda krijojne rreth 500 kerkesa ne sekonde. Ky eshte vetem nje vleresim matematikor, jo nje prove qe sistemi mund ose nuk mund ta perballoje. Nese cdo kerkese kthen te gjithe karikuesit, ngarkesa rritet me tej.
+Pershembull, 1,000 perdorues qe bejne polling cdo 2 sekonda krijojne rreth 500 kerkesa ne sekonde. Nese cdo kerkese kthen te gjithe karikuesit, ngarkesa rritet me tej.
 
 Fillimisht do te kufizoja leximet te karikuesi ose seanca me interes dhe do te testoja sjelljen me disa kliente. Do te matja kohen e pergjigjes, perdorimin e memories dhe gabimet. Nuk mund te percaktoj nje kapacitet te sakte pa keto prova.
 
@@ -517,25 +514,13 @@ flowchart LR
 ```
 
 Nese pajisja eshte lidhur te A, backend-i B nuk e ka socket-in e saj. Nje database e perbashket ndihmon me te dhenat, por nuk e transferon lidhjen WebSocket. Sistemi duhet te dije cili backend e mban pajisjen dhe si t'ia kaloje atij komanden.
+Nje qajse do te ishte hash-routing, ku si hash perdoret *chargePointId*. Kjo do te garantonte qe cdo request per nje karikues te vecante godet te njejten instance serveri. 
+Probleme qe mund te hasi nje qasje e till: 
+- Request-e qe perfshijne te gjithe karikuesat, si *GET .../ocpp/chargers*, nderkohe qe karikues te ndryshem kane krijuar lidhje WebSocket me instanca te ndryshme. Ne kete raste hash-routing nuk ndihmon. 
+- Raste rilidhje te karikuesit me instancen e serverit. Nje perdorues mund te jete hashed me CP_001, dhe karikuesi eshte tashme i lidhur me nje instance serveri A. Por per arsye te ndryshme karikuesi shkeputet, dhe vendos te lidhet me instancen B. Tashme hash-routing nuk mund ta coj requestin ne instancen e duhur.
+- Implementimi i nje algoritmi te pamenduar per hashing mund te shkaktoj konflikte ne rastin e shtimit te instancave.
 
-Kete pjese nuk do ta konsideroja ende te zgjidhur ne arkitekturen fillestare. Do te studioja komunikimin midis instancave dhe perdorimin e nje radhe mesazhesh, duke diskutuar me ekipin kur kjo kompleksitet behet e nevojshme.
-
-### Probleme qe mund te hasen
-
-| Problemi | Cfare mund te ndodhe | Hapi fillestar / pyetja |
-| --- | --- | --- |
-| Backend-i ndalet | Te gjitha lidhjet e atij procesi humbasin | Pajisjet duhet te rilidhen; si rikuperohen seancat? |
-| Karikuesi humbet internetin | Gjendja ne aplikacion vjetrohet | Shfaq shkeputjen dhe kohen e fundit; mos perfundo seancen pa evidence |
-| Komanda merr timeout | Nuk dihet nese u ekzekutua | Shfaq rezultat te pakonfirmuar dhe kontrollo ngjarjet pasuese |
-| Dy Start per nje konektor | Mund te krijohen kerkesa konkurruese | Si behet kontrolli ne menyre te sigurt ne database? |
-| Shume MeterValues | Rriten shkrimet dhe hapesira ne database | Mat volumin dhe vendos sa histori duhet ruajtur |
-| Databaza nuk pergjigjet | Nuk ruhet ose lexohet seanca | Mos paraqit sukses pa ruajtje; si trajtohet nje stop urgjent? |
-| Shume pajisje rilidhen njekohesisht | Backend-i mund te ngarkohet menjehere | Duhet testuar sjellja dhe intervali i tentativave te rilidhjes |
-| Mesazh i perseritur | Mund te krijohen rekorde te dyfishta | Duhet nje menyre per te njohur ngjarjet e perpunuara |
-
-Gjithashtu do te mbaja log-e qe tregojne karikuesin, messageId, action-in dhe rezultatin. Keshtu mund te ndiqet nje kerkese nga aplikacioni deri te pajisja. Monitorimi me i avancuar dhe testet me shume karikues do te ishin hapa te mevonshem.
-
-**Pyetje per diskutim:** Cili do te jete kufiri i pare ne kete sistem: lidhjet, perpunimi i mesazheve apo databaza? Kur do te kishte kuptim shtimi i nje instance tjeter? Si do ta testonim kete perpara se te ndryshojme arkitekturen?
+Nje qasje me moderne do te ishte perdorimi i message-brokers, si Redis, e cila do te lejonte komunikimin midis instancave. Pra ne rast se requesti godet nje instance e cila nuk eshte e lidhur me ate karikues specifik, kjo kerkese mund te hyj ne msssage-broker dhe te merret nga instanca e sakte.
 
 ## Security
 
@@ -561,7 +546,7 @@ sequenceDiagram
     end
 ```
 
-Nje operator mund te kete te drejta shtese, por duhet percaktuar qarte se cilat jane ato. Te njejtat kontrolle vlejne edhe per leximin e historise. OWASP rekomandon kontrollin e autorizimit ne cdo kerkese dhe refuzimin kur leja nuk eshte percaktuar. [OWASP — Authorization](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html).
+Nje operator mund te kete te drejta shtese, por duhet percaktuar qarte se cilat jane ato. Te njejtat kontrolle vlejne edhe per leximin e historise.
 
 ### Identiteti i karikuesit
 
@@ -581,10 +566,6 @@ Do ta zgjidhja menyren konkrete pasi te kontrolloja cfare suportojne karikuesit.
 | Kufizimi i kerkesave | Per te shmangur dergimin e pakufizuar te komandave |
 | Log-e pa password ose token | Per te hetuar problemet pa ekspozuar kredencialet |
 
-CORS nuk eshte mekanizem login-i ose autorizimi. Ai lidhet me sjelljen e browser-it dhe nuk pengon vetem ai nje klient tjeter te therrase API-ne.
-
-**Pyetje per diskutim:** Si do t'i marrin karikuesit kredencialet e tyre? Cfare behet kur humbet nje password ose skadon nje certifikate? Kush duhet te mund ta ndaloje karikimin pervec pronarit? A duhet lejuar fillimi lokal kur pajisja nuk ka internet?
-
 ## 10. Proof of Concept dhe Evidenca
 
 ### 10.1 Cfare demonstron projekti
@@ -601,38 +582,9 @@ Proof of concept lidh simulatorin me backend-in dhe lejon aplikacionin te dergoj
 | KF-06: Lexime metri | Implementuar per grupin me te fundit | Figura 4 dhe updateMeterValues; pa historik |
 | KF-07: Shfaqje ne UI | Implementuar | Polling cdo 2 sekonda; screenshot-i i frontend-it duhet shtuar |
 
-Per kerkesat jo-funksionale: lidhjet dhe logimi bazik ekzistojne, por persistence, kontrolli i aksesit, shkallezimi ne disa instanca dhe matjet e performances nuk jane realizuar ende.
+Per kerkesat jo-funksionale: lidhjet dhe logimi bazik ekzistojne, por persistence, kontrolli i aksesit, shkallezimi ne disa instanca dhe matjet e performances nuk jane realizuar.
 
-### 10.2 Log-e qe mund te perdoren ne prezantim
-
-Ky fragment eshte transkriptim i pjesshem i tekstit te dukshem ne screenshot-et ekzistuese:
-
-```text
-WebSocket connection received
-URL: /ocpp/CP_001
-Protocol: ocpp1.6
-CP_001 Authorize: TEST
-CP_001 connector 1: Preparing
-```
-
-Per te ndjekur nje rrjedhe te plote ne te ardhmen, log-et duhet te kene fusha te qendrueshme. Shembulli me poshte eshte **format i propozuar**.
-
-```json
-{
-  "event": "ocpp.command.result",
-  "chargePointId": "CP_001",
-  "connectorId": 1,
-  "commandId": "command-demo-1",
-  "messageId": "remote-start-1",
-  "action": "RemoteStartTransaction",
-  "result": "Accepted",
-  "durationMs": 120
-}
-```
-
-Duhet dalluar `messageId` i frame-it, `commandId` i kerkeses se aplikacionit dhe `transactionId` i seances OCPP. Ato nuk jane e njejta ID.
-
-### 10.3 Arkitektura dhe kontrata e implementimit prove
+### 10.2 Arkitektura dhe kontrata e implementimit prove
 
 Pjesa e mesiperme pershkruan arkitekturen fillestare te propozuar dhe pyetjet e saj te hapura. Ne proof of concept eshte realizuar nje pjese me e vogel e kesaj arkitekture, me nje proces dhe gjendje ne memorie.
 
@@ -681,7 +633,7 @@ Route-i stop perdor konektorin, jo nje `transactionId` te derguar nga UI-ja. Kjo
 
 MeterValues ruan vetem grupin me timestamp me te ri per konektor. Nuk ruhet ende historia ose snapshot i pavarur per secilin measurand. Nese matjet vijne para StatusNotification, konektori krijohet me gjendje `Unknown`; statusi pasues bashkohet me te dhenat ekzistuese. UI-ja shfaq timestamp-in e matjes vecmas kohes se statusit.
 
-### 10.4 Screenshot-et e implementimit prove
+### 10.3 Screenshot-et e implementimit prove
 
 ![Lidhja WebSocket dhe marrja e BootNotification](images/ws-connection.png)
 
@@ -715,34 +667,8 @@ Keto vijne nga shenimet e meparshme te projektit dhe nga ndryshimet e bera gjate
 
 Zgjedhja e transportit ishte gjithashtu e rendesishme: OCPP 1.6-J ne kete projekt perdor WebSocket standard. Socket.IO shton nje protokoll te vetin dhe nuk eshte zevendesim transparent per kete lidhje.
 
-### 11.2 Bug kritik: key i gabuar per tranzaksionin
 
-Ne `StartTransaction` kodi aktual ben:
-
-```typescript
-const transactionId = this.transactionId++;
-this.transactions.set(this.transactionId, {
-  transactionId: transactionId,
-  // ...
-});
-```
-
-`transactionId` lokal ka vleren e vjeter, ndersa `this.transactionId` eshte rritur. Tranzaksioni i pare dergohet si ID `0`, por ruhet nen key `1`. `getActiveTransaction` mund ta gjeje sepse kontrollon vlerat e Map-it; `StopTransaction` perdor `delete(request.transactionId)` dhe nuk e fshin entry-n e sakte.
-
-### 11.3 Bug: NotFoundException kthehet si rezultat normal
-
-Ne route-in stop gjendet:
-
-```typescript
-return new NotFoundException(`No active transactions on ${id}`);
-```
-
-Nje exception duhet hedhur me `throw` qe te trajtohet nga shtresa e gabimeve te NestJS. Me `return`, objekti trajtohet si rezultat dhe route-i ka `@HttpCode(200)`. Frontend-i ka nje kontroll shtese per kete forme, por kontrata HTTP mbetet e gabuar. [Trajtimi i exceptions ne NestJS](https://docs.nestjs.com/exception-filters).
-
-Permiresimi i propozuar eshte HTTP 404 per mungesen e seances dhe nje forme e qendrueshme e gabimit. Duhet kontrolluar veçmas edhe karikuesi i panjohur dhe konektori i pavlefshem.
-
-
-### 11.4 Cfare duhet testuar
+### 11.2 Cfare duhet testuar
 
 | Prova | Rezultati qe duhet kontrolluar |
 | --- | --- |
@@ -753,7 +679,6 @@ Permiresimi i propozuar eshte HTTP 404 per mungesen e seances dhe nje forme e qe
 | Start → Stop → Start | Seanca e pare mbyllet sakte dhe e dyta ka ID te re |
 | MeterValues para StatusNotification | Nuk humbet matja dhe konektori krijohet ne menyre te kontrolluar |
 | Matje te vjetra / te njejta / kohe e pavlefshme | Nuk korruptojne snapshot-in |
-| Stop pa seance | HTTP 404 pas rregullimit, jo HTTP 200 me objekt error |
 | Disconnect dhe reconnect me te njejtin ID | Close nga socket-i i vjeter nuk heq lidhjen e re |
 | Timeout dhe pergjigje e vonuar | Pa pending entries te mbetura dhe pa retry te verber |
 | Dy perdorues dhe nje seance | Vetem pronari/operatori i autorizuar mund ta ndaloje |
@@ -767,19 +692,11 @@ Provat me simulator duhen ndjekur nga prova me pajisje reale dhe kontroll ndaj s
 
 Perpara perdorimit real do te perqendrohesha te keto hapa:
 
-1. Te funksionoje sakte cikli start-stop-start dhe te rregullohen bug-et e dokumentuara.
+1. Te funksionoje sakte cikli start-stop-start dhe te rregullohen bug-et e ndryshme.
 2. Te kete login dhe kontroll qe perdoruesi mund te veproje vetem mbi seancen e tij.
 3. Te ruhen seancat ne PostgreSQL dhe te provohet cfare ndodh pas restart-it.
 4. Te kontrollohen payload-et dhe identiteti i karikuesit, me komunikim te enkriptuar.
 5. Te provohen shkeputjet, timeout-et dhe disa perdorues/karikues njekohesisht.
 
 Me pas do te diskutoja me ekipin ngarkesen e pritshme, ruajtjen e historise dhe nevojen per disa instanca. Nuk e konsideroj ende te zgjidhur menyren si do te rikuperohen te gjitha seancat pas nje deshtimi ose si do te drejtohen komandat midis serverave.
-
-## 13. Perfundime dhe Hapat e Radhes
-
-Projekti tregon se nje backend mund te sherbeje si ura midis nje aplikacioni HTTP dhe karikuesve me lidhje te vazhdueshme OCPP. Ndarja midis connection manager, gjendjes se karikuesve dhe handler-it OCPP e ben rrjedhen me te kuptueshme.
-
-Puna qe mbetet perqendrohet te saktesia e seancave dhe deshtimet e rrjetit. Backend-i duhet te dije kush e nisi nje seance, cilit konektor i perket, nese komanda u pranua, nese veprimi ndodhi realisht dhe si te sillet kur informacioni mungon. Persistence dhe autorizimi jane te nevojshme perpara se sistemi te perdoret nga perdorues reale.
-
-Hapi me i vlefshem pas demonstrimit eshte te perfundohet dhe testohet nje cikel i besueshem start-stop-start, pastaj te ruhet ky cikel ne database. Arkitektura me disa instanca duhet te ndertohet mbi kete baze, jo te fshehe problemet e saktesise qe ekzistojne sot.
 
