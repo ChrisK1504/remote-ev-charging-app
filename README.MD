@@ -1,3 +1,18 @@
+# Si te besh start projektin
+
+Ne root te projektit ndodhet nje start.sh bash script i cili ben run te treja instancat, backend, frontend, dhe simulatorin OCPP.
+- *http://localhost:5173*: URL-ja e simulatorit. Fillo duke krijuar nje konfigurim te ri per nje 'charge point'.
+![Ocpp Simulator](ocpp-simulator.png).
+CSMS URL duhet te jete : 'ws://localhost:9000/ocpp', dhe kjo 'wss://localhost:9000/ocpp' pasi lidhja nuk permban nje certifikat TLS.
+- *http://localhost:3000*: URL-ja hyrese backend-it.
+- *http://localhost:5174*: Ketu ndodhet frontend-i. 
+![Frontend](frontend.png)
+Zgjidh nje idTag dhe nje konektor dhe lidhja me backend-in, dhe rrjedhimisht me simulatorin do te kryhet. Vlera metrike duhet te fillojn te shfaqe.
+
+Shtypni Ctrl-C ne terminalin ku niset skriptin per te mbyllur te treja instancat.
+
+# Pune Kerkimore
+
 ## 1. Permbledhje
 
 Ky kerkim trajton ndertimin e nje sistemi per menaxhimin remote te stacioneve te karikimit per makinat elektrike. Per te provuar komunikimin eshte ndertuar nje proof of concept me NestJS, React dhe nje simulator OCPP. Backend-i pranon lidhje WebSocket, perpunon nje subset te OCPP 1.6-J, dergon komanda start/stop dhe ekspozon statuset dhe leximet e metrit per aplikacionin.
@@ -637,19 +652,32 @@ MeterValues ruan vetem grupin me timestamp me te ri per konektor. Nuk ruhet ende
 
 ![Lidhja WebSocket dhe marrja e BootNotification](images/ws-connection.png)
 
-Figura 1: evidenca ekzistuese tregon URL-ne `/ocpp/CP_001`, protokollin dhe frame-in hyres.
+**Figura 1**: evidenca ekzistuese tregon URL-ne `/ocpp/CP_001`, protokollin dhe frame-in hyres.
 
 ![Pergjigjja BootNotification me ID te njejte](images/bootnotification.png)
 
-Figura 2: ne screenshot shihet `Accepted`, `currentTime` dhe `interval: 60`. Kodi aktual kthen `interval: 10`; figura dokumenton nje version te meparshem.
+**Figura 2**: ne screenshot shihet `Accepted`, `currentTime` dhe `interval: 60`. Kodi aktual kthen `interval: 10`; figura dokumenton nje version te meparshem.
 
 ![Authorize dhe StartTransaction ne simulator dhe backend](images/authorize_transaction.png)
 
-Figura 3: shihen `idTag: TEST`, `connectorId: 1`, `meterStart` dhe timestamp-i i StartTransaction. P
+**Figura 3**: shihen `idTag: TEST`, `connectorId: 1`, `meterStart` dhe timestamp-i i StartTransaction. P
 
 ![MeterValues ne trafikun e simulatorit dhe log-et e backend-it](images/startTransaction_metervalues.png)
 
-Figura 4: shihen mesazhe periodike MeterValues dhe fusha si energjia, fuqia dhe SoC. Kjo figure provon marrjen/logimin ne ate faze;
+**Figura 4**: shihen mesazhe periodike MeterValues dhe fusha si energjia, fuqia dhe SoC. Kjo figure provon marrjen/logimin ne ate faze;
+
+![Stacioni i karikimit i lidhur, seanca e karikimit ende e pafilluar](para-karikimit.png) 
+
+**Figura 5**: nderfaqja React para fillimit te karikimit. Gjendja e CP_001 dhe konektorit merret nga REST API e backend-it.
+
+![Mbase lidhjes, vlerat metrike po vijn](frontend.png)
+
+**Figura 6**: nderfaqja React pas fillimit te karikimit. Vlerat metrike arrijne, perditesohen cdo dy sekonda.
+
+![Mbase kerkeses per mbyllje te seances, statusi tregohet 'accepting'](pas-mbylljes.png)
+
+**Figura 7**: nderfaqja React pas kerkeses per mbyllje te seances. Konektori tregon 'Finishing'.
+
 
 ## 11. Testimi dhe Problemet e Hasura
 
