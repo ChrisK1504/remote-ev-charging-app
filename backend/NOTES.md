@@ -1,5 +1,14 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-13 — StopTransaction ownership regression
+
+- Invariant: an inbound StopTransaction may remove an active transaction only when the sending chargePointId matches the recorded owner.
+- Verified: four handler-level Jest tests cover foreign charger, owner, unknown transaction ID, and repeated owner stop. Backend TypeScript checking passes.
+- Regression evidence: running the same tests against the original HEAD service in a temporary copy produces one failure (foreign stop deletes the owner's transaction); the other three pass. Working source files were not altered for this check.
+- Existing empty CALLRESULT acknowledgment is preserved. Unknown/mismatched ID acknowledgment is the current implementation policy, not a newly verified OCPP requirement.
+- Limits: these tests use fake sockets and invoke the private handler; they do not verify network identity, schema validation, persistence, or hardware behavior. The existing end-to-end starter test remains broken.
+- Review cleanup pending: remove unused json import and expectedTransaction variable in the repeated-stop test. Unknown transaction IDs currently receive no dedicated diagnostic log.
+
 ## QUESTIONS
 - What simulator can I use to mock the EV Charging Station?
 
@@ -102,4 +111,3 @@ Charge Point reports a connector status or error change.
 - Module wiring caused the websocketservice to be initialized twice, throwing an error by occupying the same port twice.
 - Cannot just make calls to the CP, but have to wait for them to be resolved. Promise API must be used.
 - Unhandled CALL messages can disrupt the communication flow. Every CALL message must be responded to.
-

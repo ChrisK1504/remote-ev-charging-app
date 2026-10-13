@@ -266,7 +266,20 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               `${chargePointId} Stop Transaction: ${JSON.stringify(request)}`,
             );
 
-            this.transactions.delete(request.transactionId);
+            const requestedChargePointId = this.transactions.get(
+              request.transactionId,
+            )?.chargePointId;
+
+            if (requestedChargePointId) {
+              if (requestedChargePointId === chargePointId) {
+                this.transactions.delete(request.transactionId);
+              } else {
+                console.log(
+                  `Charger ${chargePointId} trying to stop transaction with transactionId:${request.transactionId} from charge point:${requestedChargePointId}`,
+                );
+              }
+            }
+
             this.sendCallResult(socket, messageId, {});
           }
           break;
