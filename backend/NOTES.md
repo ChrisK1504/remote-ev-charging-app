@@ -1,5 +1,14 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-14 — Reproducible backend test runtime
+
+- Pinned Node 24.19.0 in backend/.nvmrc and package.json engines; synchronized lockfile metadata without changing dependencies.
+- Jest disables Watchman discovery. Watch and coverage commands reuse the unit-test command; e2e and debug commands also use the VM-modules flag.
+- Backend README documents nvm setup, lockfile installation, tests, and TypeScript checking. Runtime selection remains explicit in each shell.
+- Baseline evidence: Node 22.23.3 failed both suites during ESM loading (zero tests executed); Node 24.19.0 ran all six tests successfully. The prior note about a missing VM-modules flag was stale: that flag was already present in npm test.
+- Verified after changes: npm test -- --runInBand passes all six tests across two suites using Node 24.19.0; TypeScript --noEmit and git diff --check pass. Fresh nvm installation/npm ci was documented but not rerun.
+- Scope: development tooling only. Real PostgreSQL writes, start persistence ordering, restart recovery, and the stale e2e test remain unverified or unfinished.
+
 ## 2026-10-14 — PostgreSQL session persistence increment
 
 - Local setup: Postgres.app, database ocpp_csms; Docker deferred to avoid unnecessary downloads. Credentials live in ignored backend/.env.
