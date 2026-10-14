@@ -1,5 +1,17 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-14 — PostgreSQL session persistence increment
+
+- Local setup: Postgres.app, database ocpp_csms; Docker deferred to avoid unnecessary downloads. Credentials live in ignored backend/.env.
+- Implemented: TypeORM entity and SessionModule/SessionService; SQL schema includes UUID session identity, unique integer transaction identity, and lifecycle constraints. synchronize and automatic migration execution are disabled. The SQL migration was manually applied; TypeORM migration history is not configured.
+- StartTransaction awaits session creation before returning the database-generated transaction ID. StopTransaction conditionally completes only an Active session matching transaction ID and sending charger ID, preserving completion history. Remote-stop lookup now reads PostgreSQL; the old transaction Map and process-local counter were removed.
+- Verified: all six unit tests across two suites pass under Node 24.21.0 with --experimental-vm-modules; backend TypeScript checking passes. Tests cover repository completion criteria/results and OCPP stop delegation, acknowledgment, repeated acknowledgments, and failure propagation.
+- Coverage change: the former in-memory ownership tests were replaced. Current mocks verify component contracts, not actual database ownership, duplicate-stop effects, or restart recovery. Start persistence ordering has no regression test yet.
+- Unverified: real inserts/updates through TypeORM and start-stop-restart behavior. Database schema inspection was reported by the developer; manual insert checks were deferred.
+- Open gaps: multiple Active sessions can exist for a connector; duplicate StartTransaction handling, charger authentication, runtime payload validation, session-ID endpoints, reconciliation, and database-failure protocol responses remain unfinished. The existing end-to-end starter test is stale.
+- Test tooling: the saved npm test script still lacks the VM modules flag; persist a reproducible Node/test setup before treating the branch as complete.
+- Concepts practiced: entity/schema mapping, dependency injection, generated identity, conditional updates, and awaited Jest rejection assertions. A resolved Error object is not a rejected Promise; asynchronous assertions must be awaited.
+
 ## 2026-10-13 — StopTransaction ownership regression
 
 - Invariant: an inbound StopTransaction may remove an active transaction only when the sending chargePointId matches the recorded owner.

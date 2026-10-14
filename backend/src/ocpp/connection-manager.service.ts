@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { WebSocket } from 'ws';
 
 @Injectable()
-export class ConnectionManagerServie {
+export class ConnectionManagerService {
   private readonly connections = new Map<string, WebSocket>();
 
   add(chargePointId: string, socket: WebSocket): void {

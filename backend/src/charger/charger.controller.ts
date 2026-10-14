@@ -68,21 +68,18 @@ export class ChargerController {
 
   @Post(':id/connector/:connector/stop')
   @HttpCode(200)
-  stop(
+  async stop(
     @Param('id') id: string,
     @Param('connector', ParseIntPipe) connector: number,
   ) {
-    const transaction = this.ocppServerService.getActiveTransaction(
-      id,
-      connector,
-    );
+    const session = await this.ocppServerService.getActiveSession(id, connector);
 
-    if (!transaction) {
+    if (!session) {
       throw new NotFoundException(`No active transactions on ${id}`);
     }
 
     return this.ocppServerService.remoteStopTransaction(id, {
-      transactionId: transaction?.transactionId,
+      transactionId: session.transactionId,
     });
   }
 
