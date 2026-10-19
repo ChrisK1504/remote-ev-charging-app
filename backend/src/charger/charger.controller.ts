@@ -72,7 +72,10 @@ export class ChargerController {
     @Param('id') id: string,
     @Param('connector', ParseIntPipe) connector: number,
   ) {
-    const session = await this.ocppServerService.getActiveSession(id, connector);
+    const session = await this.ocppServerService.getActiveSession(
+      id,
+      connector,
+    );
 
     if (!session) {
       throw new NotFoundException(`No active transactions on ${id}`);

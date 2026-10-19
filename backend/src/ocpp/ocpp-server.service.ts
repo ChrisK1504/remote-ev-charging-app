@@ -230,7 +230,6 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
           {
             const request = payload as StartTransactionRequest;
 
-
             console.log(
               `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
             );
@@ -243,10 +242,8 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               startedAt: new Date(request.timestamp),
             });
 
-            const transactionId = newSession.transactionId;
-
             const response: StartTransactionResponse = {
-              transactionId: transactionId,
+              transactionId: newSession.transactionId,
               idTagInfo: {
                 status: 'Accepted',
               },

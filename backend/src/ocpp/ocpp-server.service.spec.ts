@@ -3,6 +3,7 @@ import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerService } from './connection-manager.service';
 import { OcppServerService } from './ocpp-server.service';
 import { SessionService } from '../session/session.service';
+import { ChargingSession } from 'src/session/charging-session.entity';
 
 describe('StopTransaction ownership', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
@@ -164,5 +165,104 @@ describe('StopTransaction ownership', () => {
     expect(send).toHaveBeenCalledTimes(2);
     expect(send).toHaveBeenNthCalledWith(1, JSON.stringify([3, 'stop-1a', {}]));
     expect(send).toHaveBeenNthCalledWith(2, JSON.stringify([3, 'stop-2a', {}]));
+  });
+});
+
+describe('StartTransaction persistence ordering', () => {
+  it('sends response after persistence completion', async () => {
+    let resolveStart!: (session: ChargingSession) => void;
+
+    const persistence = new Promise<ChargingSession>((resolve) => {
+      resolveStart = resolve;
+    });
+
+    const send = jest.fn();
+    const socket = { send } as unknown as WebSocket;
+
+    const start = jest.fn().mockReturnValue(persistence);
+    const sessions = { start } as unknown as SessionService;
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      new ConnectionManagerService(),
+      sessions,
+    );
+
+    const handling = service['handleMessage'](
+      'CP_A',
+      socket,
+      JSON.stringify([
+        2,
+        'start-a',
+        'StartTransaction',
+        {
+          connectorId: 1,
+          idTag: 'TEST',
+          meterStart: 200,
+          timestamp: '2026-10-14T10:05:00Z',
+        },
+      ]),
+    );
+
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledWith({
+      chargePointId: 'CP_A',
+      connectorId: 1,
+      idTag: 'TEST',
+      meterStart: 200,
+      startedAt: new Date('2026-10-14T10:05:00Z'),
+    });
+    expect(send).not.toHaveBeenCalled();
+
+    resolveStart({ transactionId: 42 } as ChargingSession);
+    await handling;
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify([
+        3,
+        'start-a',
+        {
+          transactionId: 42,
+          idTagInfo: { status: 'Accepted' },
+        },
+      ]),
+    );
+  });
+
+  it('does not send a response when persistence fails', async () => {
+    const send = jest.fn();
+    const socket = { send } as unknown as WebSocket;
+
+    const databaseError = new Error('Database unavailable');
+    const start = jest.fn().mockRejectedValue(databaseError);
+    const sessions = { start } as unknown as SessionService;
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      new ConnectionManagerService(),
+      sessions,
+    );
+
+    await expect(
+      service['handleMessage'](
+        'CP_A',
+        socket,
+        JSON.stringify([
+          2,
+          'start-a',
+          'StartTransaction',
+          {
+            connectorId: 1,
+            idTag: 'TEST',
+            meterStart: 200,
+            timestamp: '2026-10-14T10:05:00Z',
+          },
+        ]),
+      ),
+    ).rejects.toBe(databaseError);
+
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
   });
 });
