@@ -1,5 +1,12 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-19 — Login session sequencing regression coverage
+
+- Added real express-session middleware with an isolated in-memory store to the HTTP test application. Successful login issues an HttpOnly session cookie; production continues to use its configured PostgreSQL store.
+- Added controlled callback tests proving that login waits for regeneration before assigning userId to the replacement session, waits for save before returning, propagates regeneration/save failures, and never starts session mutation when credentials are rejected.
+- Verified under Node 24.21.0: all 30 tests across five suites pass; TypeScript --noEmit passes. No production implementation was changed by this test increment.
+- Limits: these tests do not prove PostgreSQL session storage, authenticated subsequent requests, logout, CSRF protection, or authorization. The configured PostgreSQL store still needs its session-table migration; credentialed frontend CORS is also outstanding.
+
 ## 2026-10-19 — Login HTTP validation coverage
 
 - Extended the existing auth.controller.spec.ts scaffold with parameterized invalid-input cases and wrong-password/unknown-email response equivalence. The tests use the real controller, ValidationPipe, AuthService, UserService, and Argon2 verification; only the TypeORM user repository is replaced.
