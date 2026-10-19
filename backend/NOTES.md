@@ -1,5 +1,12 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-19 — Login HTTP validation coverage
+
+- Extended the existing auth.controller.spec.ts scaffold with parameterized invalid-input cases and wrong-password/unknown-email response equivalence. The tests use the real controller, ValidationPipe, AuthService, UserService, and Argon2 verification; only the TypeORM user repository is replaced.
+- Verified: null/numeric input, missing fields, invalid email, empty password, and unexpected properties return 400 without querying users. Correct credentials return 200 with only id/email; wrong passwords and unknown emails return identical 401 bodies.
+- Verification under installed Node 24.21.0: all 26 tests across five suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests require permission to bind a temporary local port in the restricted execution environment.
+- Limits: the focused test module does not verify AppModule wiring, PostgreSQL queries, persistent login sessions, or charger authorization. Validation options are repeated from main.ts and must stay consistent. No production implementation was changed in this increment.
+
 ## 2026-10-14 — Reproducible backend test runtime
 
 - Pinned Node 24.19.0 in backend/.nvmrc and package.json engines; synchronized lockfile metadata without changing dependencies.
