@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OcppModule } from './ocpp/ocpp.module';
 import { ChargerModule } from './charger/charger.module';
+import { UserModule } from './users/user.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ChargerModule } from './charger/charger.module';
 
     OcppModule,
     ChargerModule,
+    UserModule,
   ],
 })
 export class AppModule {}

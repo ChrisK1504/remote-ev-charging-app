@@ -30,6 +30,7 @@
     "@nestjs/platform-ws": "^11.2.6",
     "@nestjs/typeorm": "^12.0.2",
     "@nestjs/websockets": "^11.2.6",
+    "argon2": "^0.45.1",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
