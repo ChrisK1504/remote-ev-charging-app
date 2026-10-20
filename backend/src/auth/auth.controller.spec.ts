@@ -1,4 +1,4 @@
-import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import { UserService } from '../users/user.service';
@@ -8,7 +8,7 @@ import { AuthController } from './auth.controller';
 import { User } from '../users/user.entity';
 import request from 'supertest';
 import session from 'express-session';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 describe('POST /auth/login', () => {
   let app: INestApplication;
@@ -169,6 +169,67 @@ describe('POST /auth/login', () => {
       statusCode: 401,
     });
     expect(repository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('ends the current login session on logout', async () => {
+    const user = {
+      id: 'user-1',
+      email: 'driver@example.com',
+      passwordHash,
+    };
+
+    repository.findOne.mockResolvedValue(user);
+
+    const client = request.agent(app.getHttpServer());
+
+    const login = await client
+      .post('/auth/login')
+      .send({
+        email: user.email,
+        password: 'testTest123!',
+      })
+      .expect(200);
+
+    const originalCookie = login.headers['set-cookie'][0].split(';')[0];
+
+    await client.get('/auth/me').expect(200);
+    const logout = await client.post('/auth/logout').expect(204);
+    expect(logout.text).toBe('');
+
+    await client.get('/auth/me').expect(401);
+
+    await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Cookie', originalCookie)
+      .expect(401);
+  });
+});
+
+describe('Logout session destruction', () => {
+  it('waits for destruction and propagates store failure without clearing the cookie', async () => {
+    const controller = new AuthController({} as AuthService);
+    let finishDestroy!: (error?: Error) => void;
+    const destroy = jest.fn((callback: (error?: Error) => void) => {
+      finishDestroy = callback;
+    });
+    const req = { session: { destroy } } as unknown as Request;
+    const clearCookie = jest.fn();
+    const response = { clearCookie } as unknown as Response;
+    const resolved = jest.fn();
+    const error = new Error('Session store unavailable');
+
+    const pending = controller.logout(req, response).then(resolved);
+    const assertion = expect(pending).rejects.toBe(error);
+
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(resolved).not.toHaveBeenCalled();
+    expect(clearCookie).not.toHaveBeenCalled();
+
+    finishDestroy(error);
+    await assertion;
+
+    expect(resolved).not.toHaveBeenCalled();
+    expect(clearCookie).not.toHaveBeenCalled();
   });
 });
 

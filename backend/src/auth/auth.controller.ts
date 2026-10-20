@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import * as authTypes from './auth.types';
 import express from 'express';
@@ -50,5 +50,24 @@ export class AuthController {
   async getMe(@Req() request: express.Request) {
     const currentUserId = request.session.userId;
     return this.authService.getCurrentUser(currentUserId);
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  async logout(
+    @Req() request: express.Request,
+    @Res({ passthrough: true }) response: express.Response,
+  ) {
+    await new Promise<void>((resolve, reject) => {
+      request.session.destroy((err) => {
+        if (err) {
+          reject(err as Error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    response.clearCookie('connect.sid', { path: '/' });
   }
 }

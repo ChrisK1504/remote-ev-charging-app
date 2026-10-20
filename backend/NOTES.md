@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-20 — Logout and session invalidation coverage
+
+- Developer implemented POST /auth/logout: awaits session destruction, clears connect.sid at path /, and returns 204. Store failures propagate before cookie clearing.
+- HTTP regression covers login, authenticated identity lookup, empty logout response, subsequent 401, and replay of the original cookie receiving 401. This uses the test MemoryStore; PostgreSQL logout deletion and unauthenticated logout remain unverified.
+- Added a controlled callback test proving logout stays pending until destruction completes and rejects with the original store error without clearing the cookie when destruction fails.
+- Verified under Node 24.21.0: all 38 tests across five suites pass and TypeScript --noEmit passes. Removed a trailing whitespace line identified by git diff --check.
+- Next increment: credentialed browser CORS and frontend requests, including handling logout's empty 204 response before adding login UI.
+
 ## 2026-10-20 — Current-user endpoint and cookie reuse
 
 - Added GET /auth/me: reads userId from the server-side session, looks up the current user, and returns only id/email. Missing identity or a deleted user yields 401; database errors propagate.
