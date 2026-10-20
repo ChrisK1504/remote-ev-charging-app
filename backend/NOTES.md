@@ -1,5 +1,14 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-20 — Authentication session concepts and migration review
+
+- A login session and a charging session represent different lifecycles. The authentication store's `session` table maps a session ID (`sid`) to session data (`sess`, including `userId`) and an expiration time (`expire`).
+- The server generates the session ID and sends a signed representation in a cookie. The browser stores the cookie and automatically sends it on requests matching its scope, subject to browser cookie and request-credentials rules. The cookie signature protects integrity; it is not encryption. Endpoint authorization remains a separate backend responsibility.
+- Tabs in the same browser profile normally share cookie storage and therefore the same login session. Independent browsers or profiles normally have separate cookie storage: two successful independent logins create distinct session IDs that can reference the same user. Logging out one session does not automatically log out the other.
+- Cookies can survive closing the browser until expiration; the current configuration gives the cookie an eight-hour lifetime. Sharing a cookie does not synchronize React state between tabs. A new tab or page refresh needs a backend identity lookup (planned `GET /auth/me`) to recover the authenticated user.
+- A primary key automatically creates an index for session-ID lookups. The separate expiration index helps the store find expired sessions for cleanup. Indexes cost storage and write maintenance; PostgreSQL may choose a table scan when it is cheaper.
+- Reviewed developer-written `003_create_auth_sessions.sql`: columns, primary key, and expiration index match the installed connect-pg-simple store's schema requirements, without its legacy OIDS clause. Applying the migration and real PostgreSQL login persistence remain unverified in this session.
+
 ## 2026-10-19 — Login session sequencing regression coverage
 
 - Added real express-session middleware with an isolated in-memory store to the HTTP test application. Successful login issues an HttpOnly session cookie; production continues to use its configured PostgreSQL store.
