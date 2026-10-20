@@ -20,4 +20,17 @@ export class AuthService {
 
     return { id: user.id, email: user.email };
   }
+
+  async getCurrentUser(userId: string | undefined) {
+    if (!userId) {
+      throw new UnauthorizedException();
+    }
+
+    const user = await this.userService.findById({ id: userId });
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+
+    return { id: user.id, email: user.email };
+  }
 }

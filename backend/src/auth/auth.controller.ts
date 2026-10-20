@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import * as authTypes from './auth.types';
 import express from 'express';
@@ -44,5 +44,11 @@ export class AuthController {
     });
 
     return user;
+  }
+
+  @Get('me')
+  async getMe(@Req() request: express.Request) {
+    const currentUserId = request.session.userId;
+    return this.authService.getCurrentUser(currentUserId);
   }
 }

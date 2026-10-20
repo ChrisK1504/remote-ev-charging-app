@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import { UserService } from '../users/user.service';
@@ -132,6 +132,43 @@ describe('POST /auth/login', () => {
     });
     expect(unknownEmail.body).toEqual(wrongPassword.body);
     expect(repository.findOne).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns the current user when the login cookie is reused', async () => {
+    const user = {
+      id: 'user-1',
+      email: 'driver@example.com',
+      passwordHash,
+    };
+
+    repository.findOne.mockResolvedValue(user);
+
+    const client = request.agent(app.getHttpServer());
+
+    await client
+      .post('/auth/login')
+      .send({
+        email: user.email,
+        password: 'testTest123!',
+      })
+      .expect(200);
+
+    const response = await client.get('/auth/me').expect(200);
+    expect(response.body).toEqual({
+      id: user.id,
+      email: user.email,
+    });
+  });
+
+  it('returns HTTP 401 when requesting /auth/me without logging in', async () => {
+    const client = request.agent(app.getHttpServer());
+
+    const response = await client.get('/auth/me').expect(401);
+    expect(response.body).toEqual({
+      message: 'Unauthorized',
+      statusCode: 401,
+    });
+    expect(repository.findOne).not.toHaveBeenCalled();
   });
 });
 

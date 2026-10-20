@@ -1,5 +1,14 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-20 — Current-user endpoint and cookie reuse
+
+- Added GET /auth/me: reads userId from the server-side session, looks up the current user, and returns only id/email. Missing identity or a deleted user yields 401; database errors propagate.
+- Added four service tests covering missing identity without lookup, successful lookup, deleted user, and database failure. Added HTTP tests for login-cookie reuse through a Supertest agent and unauthenticated rejection without a user query.
+- Verified under Node 24.21.0: all 36 tests across five suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests use an isolated MemoryStore, not PostgreSQL.
+- Developer-reported manual evidence: local login persisted two independent sessions in PostgreSQL; GET /auth/me returned the expected user with the saved cookie and 401 without it. These database checks were not independently rerun by the assistant.
+- Concepts practiced: a lookup resolving to null differs from a rejected Promise; HTTP tests must assert the real status, not just statusCode in the body; a cookie-preserving test agent verifies continuity across requests.
+- Remaining work: logout, credentialed frontend requests/CORS, browser login UI, and charger-route authentication. Session ownership authorization remains separate and unfinished.
+
 ## 2026-10-20 — Authentication session concepts and migration review
 
 - A login session and a charging session represent different lifecycles. The authentication store's `session` table maps a session ID (`sid`) to session data (`sess`, including `userId`) and an expiration time (`expire`).
