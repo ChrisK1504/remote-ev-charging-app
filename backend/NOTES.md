@@ -1,5 +1,12 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-22 — Backend-assigned tag HTTP regression tests
+
+- Updated charger command tests to send only connectorId and expect the stored user tag in the outgoing OCPP command. Removed the duplicate UserService mock provider, retaining real AuthService/UserService with a mocked repository and isolated session MemoryStore.
+- Added cases for client-tag rejection, a missing user during the second lookup, and database failure during that lookup. Lookup failures assert no command dispatch.
+- Verification: 54 tests pass and two fail across six suites. The new rejection case exposes the missing controller check (expected 400, actual 200); the existing user-creation assertion lacks the newly generated idTag. TypeScript --noEmit and git diff --check pass. Production code was not changed in this test increment.
+- Database migration/application, real charger behavior, and session ownership enforcement remain unverified or unfinished. Resolve both failures before committing this increment.
+
 ## 2026-10-21 — Charger command authentication regression coverage
 
 - Added ten HTTP tests covering both charger start and stop: missing cookie, deleted user with a saved cookie, failed user lookup, authenticated dispatch, and command rejection after logout.

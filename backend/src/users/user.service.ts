@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
 import * as argon2 from 'argon2';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 
 @Injectable()
 export class UserService {
@@ -29,6 +29,7 @@ export class UserService {
       id: randomUUID(),
       email: normalizedEmail,
       passwordHash,
+      idTag: randomBytes(10).toString('hex'),
     });
 
     const savedUser = await this.userRepository.save(newUser);
@@ -74,5 +75,22 @@ export class UserService {
       return null;
     }
     return { id: foundUser.id, email: foundUser.email };
+  }
+
+  async findChargingIdentity(
+    userId: string,
+  ): Promise<{ idTag: string } | null> {
+    const user = await this.userRepository.findOne({
+      where: {
+        id: userId,
+      },
+      select: {
+        idTag: true,
+      },
+    });
+    if (!user) {
+      return null;
+    }
+    return { idTag: user.idTag };
   }
 }
