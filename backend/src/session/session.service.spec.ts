@@ -99,3 +99,39 @@ describe('SessionService.start', () => {
     expect(save).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('SessionService.start unrelated failures', () => {
+  it.each([
+    new QueryFailedError(
+      'INSERT',
+      undefined,
+      Object.assign(new Error('other unique constraint'), {
+        code: '23505',
+        constraint: 'other_constraint',
+      }),
+    ),
+    new QueryFailedError(
+      'INSERT',
+      undefined,
+      Object.assign(new Error('database unavailable'), {
+        code: '08006',
+      }),
+    ),
+    new Error('unexpected failure'),
+  ])('preserves the original error: %s', async (error) => {
+    const repository = {
+      create: jest.fn().mockImplementation((input) => input),
+      save: jest.fn().mockRejectedValue(error),
+    } as unknown as Repository<ChargingSession>;
+    const service = new SessionService(repository);
+    await expect(
+      service.start({
+        chargePointId: 'CP-A',
+        connectorId: 1,
+        idTag: 'TEST',
+        meterStart: 0,
+        startedAt: new Date('2026-10-14T10:05:00Z'),
+      }),
+    ).rejects.toBe(error);
+  });
+});

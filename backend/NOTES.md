@@ -132,3 +132,14 @@ Charge Point reports a connector status or error change.
 - Module wiring caused the websocketservice to be initialized twice, throwing an error by occupying the same port twice.
 - Cannot just make calls to the CP, but have to wait for them to be resolved. Promise API must be used.
 - Unhandled CALL messages can disrupt the communication flow. Every CALL message must be responded to.
+
+
+## 2026-10-21 — One active transaction per connector
+
+- Migration 004 adds a partial unique index on (charge_point_id, connector_id) for Active sessions, preserving completed history. Corrected the migration filename typo; SQL is unchanged and an already applied migration does not need reapplication.
+- Developer reports local migration application and duplicate-active rejection succeeded. Database checks were not independently rerun by the assistant.
+- SessionService translates only PostgreSQL 23505 for idx_active_session_per_connector into ActiveSessionConflictError. Other constraints, connection errors, and unexpected errors retain their original identity.
+- StartTransaction responds to this domain conflict with a correlated CALLERROR GenericError and empty error details; no transaction ID or successful CALLRESULT is fabricated. A warning identifies charger, connector, and message. Other persistence errors still propagate to the existing message error logger.
+- GenericError is a local fallback policy, not a protocol-defined connector-occupancy response. Beckhoff's OCPP error reference describes GenericError as the fallback (https://infosys.beckhoff.com/content/1033/tf6771_tc3_iot_ocpp/16225485707.html). Direct specification PDF retrieval failed; exact policy conformance and physical charger retry behavior remain unverified.
+- Verified by assistant under Node 24.21.0: all 20 tests across three suites pass, TypeScript --noEmit passes, and git diff --check passes. Tests cover error translation/preservation, correlated conflict CALLERROR, successful persistence ordering, and unchanged generic persistence-failure behavior. Mocks do not prove real concurrent database enforcement.
+- Deferred: duplicate StartTransaction replay/idempotency, stale active sessions after restart, reconciliation, and protocol responses for other database failures. CALLERROR does not establish that the physical charger stopped.

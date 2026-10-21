@@ -2,7 +2,10 @@ import { WebSocket } from 'ws';
 import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerService } from './connection-manager.service';
 import { OcppServerService } from './ocpp-server.service';
-import { SessionService } from '../session/session.service';
+import {
+  ActiveSessionConflictError,
+  SessionService,
+} from '../session/session.service';
 import { ChargingSession } from 'src/session/charging-session.entity';
 
 describe('StopTransaction case', () => {
@@ -266,13 +269,10 @@ describe('StartTransaction case', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('does not acknowledge StartTransaction when persistence rejects with an active-session conflict', async () => {
+  it('returns a correlated CALLERROR for an active-session conflict', async () => {
     const send = jest.fn();
     const socket = { send } as unknown as WebSocket;
-    const databaseError = Object.assign(new Error('duplicate active session'), {
-      code: '23505',
-      constraint: 'idx_active_session_per_connector',
-    });
+    const databaseError = new ActiveSessionConflictError();
 
     const start = jest.fn().mockRejectedValue(databaseError);
     const sessionService = { start } as unknown as SessionService;
@@ -299,7 +299,16 @@ describe('StartTransaction case', () => {
           },
         ]),
       ),
-    ).rejects.toBe(databaseError);
-    expect(send).not.toHaveBeenCalled();
+    ).resolves.toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify([
+        4,
+        'start-a',
+        'GenericError',
+        'Connector already has an active session',
+        {},
+      ]),
+    );
   });
 });

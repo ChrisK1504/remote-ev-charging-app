@@ -27,7 +27,10 @@ import {
   StopTransactionRequest,
 } from './ocpp.types';
 
-import { SessionService } from '../session/session.service';
+import {
+  ActiveSessionConflictError,
+  SessionService,
+} from '../session/session.service';
 
 interface PendingRequest {
   resolve: (payload: unknown) => void;
@@ -234,22 +237,40 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
             );
 
-            const newSession = await this.sessionService.start({
-              chargePointId,
-              connectorId: request.connectorId,
-              idTag: request.idTag,
-              meterStart: request.meterStart,
-              startedAt: new Date(request.timestamp),
-            });
+            try {
+              const newSession = await this.sessionService.start({
+                chargePointId,
+                connectorId: request.connectorId,
+                idTag: request.idTag,
+                meterStart: request.meterStart,
+                startedAt: new Date(request.timestamp),
+              });
 
-            const response: StartTransactionResponse = {
-              transactionId: newSession.transactionId,
-              idTagInfo: {
-                status: 'Accepted',
-              },
-            };
+              const response: StartTransactionResponse = {
+                transactionId: newSession.transactionId,
+                idTagInfo: {
+                  status: 'Accepted',
+                },
+              };
 
-            this.sendCallResult(socket, messageId, response);
+              this.sendCallResult(socket, messageId, response);
+            } catch (error) {
+              if (!(error instanceof ActiveSessionConflictError)) {
+                throw error;
+              }
+              console.warn(
+                `StartTransaction conflict: ${chargePointId} connector ${request.connectorId}, message ${messageId}`,
+              );
+              socket.send(
+                JSON.stringify([
+                  OcppMessageType.CallError,
+                  messageId,
+                  'GenericError',
+                  'Connector already has an active session',
+                  {},
+                ]),
+              );
+            }
           }
           break;
         case 'StopTransaction':
