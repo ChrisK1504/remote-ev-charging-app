@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ChargingSession } from './charging-session.entity';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 
 @Injectable()
@@ -31,8 +31,18 @@ export class SessionService {
       endedAt: null,
       meterStop: null,
     });
-
-    return this.sessions.save(newSession);
+    try {
+      return await this.sessions.save(newSession);
+    } catch (err) {
+      if (
+        err instanceof QueryFailedError &&
+        err.driverError.code === '23505' &&
+        err.driverError.constraint === 'idx_active_session_per_connector'
+      ) {
+        throw new ActiveSessionConflictError();
+      }
+      throw err;
+    }
   }
 
   async complete(input: {
@@ -66,5 +76,12 @@ export class SessionService {
       connectorId,
       status: 'Active',
     });
+  }
+}
+
+export class ActiveSessionConflictError extends Error {
+  constructor() {
+    super('Connector already has an active session');
+    this.name = 'ActiveSessionConflictError';
   }
 }

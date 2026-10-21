@@ -5,7 +5,7 @@ import { OcppServerService } from './ocpp-server.service';
 import { SessionService } from '../session/session.service';
 import { ChargingSession } from 'src/session/charging-session.entity';
 
-describe('StopTransaction ownership', () => {
+describe('StopTransaction case', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
     const complete = jest.fn().mockResolvedValue(false);
 
@@ -168,7 +168,7 @@ describe('StopTransaction ownership', () => {
   });
 });
 
-describe('StartTransaction persistence ordering', () => {
+describe('StartTransaction case', () => {
   it('sends response after persistence completion', async () => {
     let resolveStart!: (session: ChargingSession) => void;
 
@@ -263,6 +263,43 @@ describe('StartTransaction persistence ordering', () => {
     ).rejects.toBe(databaseError);
 
     expect(start).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('does not acknowledge StartTransaction when persistence rejects with an active-session conflict', async () => {
+    const send = jest.fn();
+    const socket = { send } as unknown as WebSocket;
+    const databaseError = Object.assign(new Error('duplicate active session'), {
+      code: '23505',
+      constraint: 'idx_active_session_per_connector',
+    });
+
+    const start = jest.fn().mockRejectedValue(databaseError);
+    const sessionService = { start } as unknown as SessionService;
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      new ConnectionManagerService(),
+      sessionService,
+    );
+
+    await expect(
+      service['handleMessage'](
+        'CP-A',
+        socket,
+        JSON.stringify([
+          2,
+          'start-a',
+          'StartTransaction',
+          {
+            connectorId: 1,
+            idTag: 'TEST',
+            meterStart: 200,
+            timestamp: '2026-10-14T10:05:00Z',
+          },
+        ]),
+      ),
+    ).rejects.toBe(databaseError);
     expect(send).not.toHaveBeenCalled();
   });
 });
