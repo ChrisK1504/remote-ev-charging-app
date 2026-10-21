@@ -70,7 +70,10 @@ describe('Charger command authentication (HTTP)', () => {
       connected: true,
       connectors: new Map(),
     });
-    ocpp.getActiveSession.mockResolvedValue({ transactionId: 42 });
+    ocpp.getActiveSession.mockResolvedValue({
+      transactionId: 42,
+      userId: 'user-1',
+    });
     ocpp.remoteStartTransaction.mockResolvedValue({ status: 'Accepted' });
     ocpp.remoteStopTransaction.mockResolvedValue({ status: 'Accepted' });
   });
@@ -162,7 +165,7 @@ describe('Charger command authentication (HTTP)', () => {
     });
   });
 
-  it('rejects a client-supplied tag before accessing chargers', async () => {
+  it('ignores a client-supplied tag and dispatches the stored user tag', async () => {
     const client = await login();
 
     await client
@@ -170,6 +173,11 @@ describe('Charger command authentication (HTTP)', () => {
       .send({ connectorId: 1, idTag: 'another-users-tag' })
       .expect(200);
 
+    expect(ocpp.remoteStartTransaction).toHaveBeenCalledTimes(1);
+    expect(ocpp.remoteStartTransaction).toHaveBeenCalledWith('CP_001', {
+      connectorId: 1,
+      idTag: storedTag,
+    });
   });
 
   it('rejects start when the user disappears before the charging-identity lookup', async () => {

@@ -1,14 +1,21 @@
-import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ChargingSession } from './charging-session.entity';
 import { QueryFailedError, Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
+import { UserService } from '../users/user.service';
+import { Injectable } from '@nestjs/common';
+
+type StartOutcome = {
+  transactionId: number;
+  authorizationStatus: 'Accepted' | 'Invalid';
+};
 
 @Injectable()
 export class SessionService {
   constructor(
     @InjectRepository(ChargingSession)
     private readonly sessions: Repository<ChargingSession>,
+    private readonly userService: UserService,
   ) {}
 
   async start(input: {
@@ -17,22 +24,29 @@ export class SessionService {
     idTag: string;
     meterStart: number;
     startedAt: Date;
-  }): Promise<ChargingSession> {
-    const id = randomUUID();
+  }): Promise<StartOutcome> {
+    let authorizationStatus: 'Accepted' | 'Invalid' = 'Accepted';
+    const user = await this.userService.findByIdTag(input.idTag);
+    if (!user) {
+      authorizationStatus = 'Invalid';
+    }
 
+    const id = randomUUID();
     const newSession = this.sessions.create({
       id,
       connectorId: input.connectorId,
       chargePointId: input.chargePointId,
       status: 'Active',
       idTag: input.idTag,
+      userId: user?.userId ?? null,
       meterStart: input.meterStart,
       startedAt: input.startedAt,
       endedAt: null,
       meterStop: null,
     });
     try {
-      return await this.sessions.save(newSession);
+      const savedSession = await this.sessions.save(newSession);
+      return { transactionId: savedSession.transactionId, authorizationStatus };
     } catch (err) {
       if (
         err instanceof QueryFailedError &&

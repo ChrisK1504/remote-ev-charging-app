@@ -1,5 +1,11 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-22 — Test contract repairs
+
+- Replaced the misleading client-tag rejection case with an assertion that the supplied tag is ignored and the stored user tag is sent. Updated SessionService test construction for its UserService dependency and the OCPP persistence mock for the new authorization outcome return contract.
+- TypeScript exposed a null dereference on unknown tags; session creation now assigns a null owner when lookup returns null, matching the existing nullable entity.
+- Verified: 56 tests across six suites pass under Node 24.21.0; TypeScript --noEmit and git diff --check pass. This does not establish database migration correctness, unknown-tag behavior on hardware, or driver ownership enforcement. Pending-start design is deferred at the developer's request.
+
 ## 2026-10-22 — Backend-assigned tag HTTP regression tests
 
 - Updated charger command tests to send only connectorId and expect the stored user tag in the outgoing OCPP command. Removed the duplicate UserService mock provider, retaining real AuthService/UserService with a mocked repository and isolated session MemoryStore.

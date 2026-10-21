@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   NotFoundException,
@@ -89,7 +90,7 @@ export class ChargerController {
   @Post(':id/connector/:connector/stop')
   @HttpCode(200)
   async stop(
-    @Param('id') id: string,
+    @Param('id') chargePointId: string,
     @Param('connector', ParseIntPipe) connector: number,
     @Req() request: express.Request,
   ) {
@@ -102,15 +103,21 @@ export class ChargerController {
     const user = await this.authService.getCurrentUser(currentUserId);
 
     const session = await this.ocppServerService.getActiveSession(
-      id,
+      chargePointId,
       connector,
     );
 
     if (!session) {
-      throw new NotFoundException(`No active transactions on ${id}`);
+      throw new NotFoundException(`No active transactions on ${chargePointId}`);
     }
 
-    return this.ocppServerService.remoteStopTransaction(id, {
+    if (session.userId !== user.id) {
+      throw new ForbiddenException(
+        'You cannot stop a charging session you do not own',
+      );
+    }
+
+    return this.ocppServerService.remoteStopTransaction(chargePointId, {
       transactionId: session.transactionId,
     });
   }

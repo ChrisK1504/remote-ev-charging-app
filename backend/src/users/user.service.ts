@@ -93,4 +93,19 @@ export class UserService {
     }
     return { idTag: user.idTag };
   }
+
+  async findByIdTag(idTag: string): Promise<{ userId: string } | null> {
+    const user = await this.userRepository.findOne({
+      where: {
+        idTag: idTag,
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (!user) {
+      return null;
+    }
+    return { userId: user.id };
+  }
 }
