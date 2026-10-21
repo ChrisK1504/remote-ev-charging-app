@@ -1,5 +1,55 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-21 — Charger command authentication regression coverage
+
+- Added ten HTTP tests covering both charger start and stop: missing cookie, deleted user with a saved cookie, failed user lookup, authenticated dispatch, and command rejection after logout.
+- Tests use the real controllers, AuthService, UserService, Argon2 login verification, and express-session with an isolated MemoryStore. The user repository, charger state, and OCPP service are mocked. Rejected requests assert no charger-state lookup, active-session lookup, or command dispatch.
+- Corrected the charger controller's AuthService import to a relative path after Jest exposed unresolved `src/auth/auth.service` resolution. Existing developer authentication changes were otherwise preserved.
+- Verified under Node 24.21.0: all 48 tests across six suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests required permission to bind temporary local ports.
+- Limits: this does not verify PostgreSQL session storage, AppModule wiring, real charger commands, session expiry, browser CORS, or resource ownership authorization. Authenticated drivers can still request commands without a session-ownership policy.
+- Concept practiced: a rejected HTTP response alone does not prove absence of side effects; tests must also assert that downstream command services were never called.
+- Commit checkpoint: review and commit this bounded authentication increment on feature/driver-auth. Credentialed browser requests and CORS remain the next planned integration work.
+
+## 2026-10-20 — Logout and session invalidation coverage
+
+- Developer implemented POST /auth/logout: awaits session destruction, clears connect.sid at path /, and returns 204. Store failures propagate before cookie clearing.
+- HTTP regression covers login, authenticated identity lookup, empty logout response, subsequent 401, and replay of the original cookie receiving 401. This uses the test MemoryStore; PostgreSQL logout deletion and unauthenticated logout remain unverified.
+- Added a controlled callback test proving logout stays pending until destruction completes and rejects with the original store error without clearing the cookie when destruction fails.
+- Verified under Node 24.21.0: all 38 tests across five suites pass and TypeScript --noEmit passes. Removed a trailing whitespace line identified by git diff --check.
+- Next increment: credentialed browser CORS and frontend requests, including handling logout's empty 204 response before adding login UI.
+
+## 2026-10-20 — Current-user endpoint and cookie reuse
+
+- Added GET /auth/me: reads userId from the server-side session, looks up the current user, and returns only id/email. Missing identity or a deleted user yields 401; database errors propagate.
+- Added four service tests covering missing identity without lookup, successful lookup, deleted user, and database failure. Added HTTP tests for login-cookie reuse through a Supertest agent and unauthenticated rejection without a user query.
+- Verified under Node 24.21.0: all 36 tests across five suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests use an isolated MemoryStore, not PostgreSQL.
+- Developer-reported manual evidence: local login persisted two independent sessions in PostgreSQL; GET /auth/me returned the expected user with the saved cookie and 401 without it. These database checks were not independently rerun by the assistant.
+- Concepts practiced: a lookup resolving to null differs from a rejected Promise; HTTP tests must assert the real status, not just statusCode in the body; a cookie-preserving test agent verifies continuity across requests.
+- Remaining work: logout, credentialed frontend requests/CORS, browser login UI, and charger-route authentication. Session ownership authorization remains separate and unfinished.
+
+## 2026-10-20 — Authentication session concepts and migration review
+
+- A login session and a charging session represent different lifecycles. The authentication store's `session` table maps a session ID (`sid`) to session data (`sess`, including `userId`) and an expiration time (`expire`).
+- The server generates the session ID and sends a signed representation in a cookie. The browser stores the cookie and automatically sends it on requests matching its scope, subject to browser cookie and request-credentials rules. The cookie signature protects integrity; it is not encryption. Endpoint authorization remains a separate backend responsibility.
+- Tabs in the same browser profile normally share cookie storage and therefore the same login session. Independent browsers or profiles normally have separate cookie storage: two successful independent logins create distinct session IDs that can reference the same user. Logging out one session does not automatically log out the other.
+- Cookies can survive closing the browser until expiration; the current configuration gives the cookie an eight-hour lifetime. Sharing a cookie does not synchronize React state between tabs. A new tab or page refresh needs a backend identity lookup (planned `GET /auth/me`) to recover the authenticated user.
+- A primary key automatically creates an index for session-ID lookups. The separate expiration index helps the store find expired sessions for cleanup. Indexes cost storage and write maintenance; PostgreSQL may choose a table scan when it is cheaper.
+- Reviewed developer-written `003_create_auth_sessions.sql`: columns, primary key, and expiration index match the installed connect-pg-simple store's schema requirements, without its legacy OIDS clause. Applying the migration and real PostgreSQL login persistence remain unverified in this session.
+
+## 2026-10-19 — Login session sequencing regression coverage
+
+- Added real express-session middleware with an isolated in-memory store to the HTTP test application. Successful login issues an HttpOnly session cookie; production continues to use its configured PostgreSQL store.
+- Added controlled callback tests proving that login waits for regeneration before assigning userId to the replacement session, waits for save before returning, propagates regeneration/save failures, and never starts session mutation when credentials are rejected.
+- Verified under Node 24.21.0: all 30 tests across five suites pass; TypeScript --noEmit passes. No production implementation was changed by this test increment.
+- Limits: these tests do not prove PostgreSQL session storage, authenticated subsequent requests, logout, CSRF protection, or authorization. The configured PostgreSQL store still needs its session-table migration; credentialed frontend CORS is also outstanding.
+
+## 2026-10-19 — Login HTTP validation coverage
+
+- Extended the existing auth.controller.spec.ts scaffold with parameterized invalid-input cases and wrong-password/unknown-email response equivalence. The tests use the real controller, ValidationPipe, AuthService, UserService, and Argon2 verification; only the TypeORM user repository is replaced.
+- Verified: null/numeric input, missing fields, invalid email, empty password, and unexpected properties return 400 without querying users. Correct credentials return 200 with only id/email; wrong passwords and unknown emails return identical 401 bodies.
+- Verification under installed Node 24.21.0: all 26 tests across five suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests require permission to bind a temporary local port in the restricted execution environment.
+- Limits: the focused test module does not verify AppModule wiring, PostgreSQL queries, persistent login sessions, or charger authorization. Validation options are repeated from main.ts and must stay consistent. No production implementation was changed in this increment.
+
 ## 2026-10-14 — Reproducible backend test runtime
 
 - Pinned Node 24.19.0 in backend/.nvmrc and package.json engines; synchronized lockfile metadata without changing dependencies.

@@ -8,16 +8,21 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ChargeStateService } from '../ocpp/charger-state.service';
 import { OcppServerService } from '../ocpp/ocpp-server.service';
 import type { ChargePointState } from '../ocpp/ocpp.types';
+import express from 'express';
+import { AuthService } from '../auth/auth.service';
 
 @Controller('chargers')
 export class ChargerController {
   constructor(
     private readonly chargeStateService: ChargeStateService,
     private readonly ocppServerService: OcppServerService,
+    private readonly authService: AuthService,
   ) {}
 
   @Get()
@@ -38,8 +43,21 @@ export class ChargerController {
 
   @Post(':id/start')
   @HttpCode(200)
-  start(@Param('id') id: string, @Body() body: unknown) {
+  async start(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: express.Request,
+  ) {
+    // Check if user is logged-in, session still hasn't expired.
+    const currentUserId = request.session.userId;
+    if (!currentUserId) {
+      throw new UnauthorizedException();
+    }
+    // We check database if the user still exists before proceeding
+    const user = await this.authService.getCurrentUser(currentUserId);
+
     const payload = this.requireBody(body);
+
     if (
       typeof payload.idTag !== 'string' ||
       payload.idTag.trim().length === 0 ||
@@ -71,7 +89,17 @@ export class ChargerController {
   async stop(
     @Param('id') id: string,
     @Param('connector', ParseIntPipe) connector: number,
+    @Req() request: express.Request,
   ) {
+
+    // Check if user is logged-in, session still hasn't expired.
+    const currentUserId = request.session.userId;
+    if (!currentUserId) {
+      throw new UnauthorizedException();
+    }
+    // We check database if the user still exists before proceeding
+    const user = await this.authService.getCurrentUser(currentUserId);
+
     const session = await this.ocppServerService.getActiveSession(
       id,
       connector,

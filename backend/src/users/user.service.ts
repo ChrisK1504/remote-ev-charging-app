@@ -58,4 +58,21 @@ export class UserService {
     }
     return { id: foundUser.id, email: foundUser.email };
   }
+
+  async findById(input: {
+    id: string;
+  }): Promise<{ id: string; email: string } | null> {
+    const foundUser = await this.userRepository.findOne({
+      where: { id: input.id },
+      select: {
+        id: true,
+        email: true,
+      },
+    });
+
+    if (!foundUser) {
+      return null;
+    }
+    return { id: foundUser.id, email: foundUser.email };
+  }
 }
