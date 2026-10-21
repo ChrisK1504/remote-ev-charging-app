@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { request } from './api'
+import { ApiError, request } from './api'
 import type { Charger, CommandResponse } from './api'
 import './App.css'
+import LoginForm, { type User } from './LoginForm'
 
 function ChargerControls({ charger }: { charger: Charger }) {
   const [idTag, setIdTag] = useState('')
@@ -9,6 +10,7 @@ function ChargerControls({ charger }: { charger: Charger }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  
 
   async function send(action: 'start' | 'stop') {
     const connector = Number(connectorId)
@@ -75,7 +77,64 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const [user, setUser] = useState<User | null>(null)
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [sessionError, setSessionError] = useState('')
+
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
+
+  async function logout() {
+    setLoggingOut(true)
+    setLogoutError('')
+
+    try {
+      await request<void>('/auth/logout', {
+        method: 'POST',
+      });
+
+      setUser(null);
+      setChargers([]);
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : 'Logout failed')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
   useEffect(() => {
+    // Allows rejecting pending requests when performing cleanup or a component unmounts
+    const controller = new AbortController()
+
+    async function restoreSession() {
+      try {
+        const currentUser = await request<User>('/auth/me', {
+          signal: controller.signal,
+        })
+
+        if (!controller.signal.aborted) {
+          setUser(currentUser)
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+
+        if (error instanceof ApiError && error.status === 401) {
+          setUser(null)
+        } else {
+          setSessionError('Could not check your session. Please retry');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setCheckingSession(false)
+        }
+      }
+    }
+    void restoreSession()
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!user) return
     const controller = new AbortController()
     let pending = false
 
@@ -104,7 +163,24 @@ function App() {
       clearInterval(interval)
       controller.abort()
     }
-  }, [])
+  }, [user])
+
+  if (checkingSession) {
+    return <p role='status'>Checking session...</p>
+  }
+
+  if (sessionError) {
+    return (
+      <div role='alert'>
+        <p>{sessionError}</p>
+        <button onClick={() => window.location.reload()}>Retry</button>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginForm onLogin={setUser} />
+  }
 
   return (
     <main>
@@ -149,6 +225,14 @@ function App() {
           <ChargerControls charger={charger} />
         </section>
       ))}
+      <button
+        type='button'
+        disabled={loggingOut}
+        onClick={() => void logout()}
+      >
+        {loggingOut ? 'Logging out' : 'Log out'}
+      </button>
+      {logoutError && <p role='alert'>{logoutError}</p>}
     </main>
   )
 }
