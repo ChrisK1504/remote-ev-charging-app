@@ -1,10 +1,17 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import * as authTypes from './auth.types';
 import express from 'express';
-
 declare module 'express-session' {
-  interface SessionData {
+  export interface SessionData {
     userId?: string;
   }
 }

@@ -1,5 +1,15 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-21 — Charger command authentication regression coverage
+
+- Added ten HTTP tests covering both charger start and stop: missing cookie, deleted user with a saved cookie, failed user lookup, authenticated dispatch, and command rejection after logout.
+- Tests use the real controllers, AuthService, UserService, Argon2 login verification, and express-session with an isolated MemoryStore. The user repository, charger state, and OCPP service are mocked. Rejected requests assert no charger-state lookup, active-session lookup, or command dispatch.
+- Corrected the charger controller's AuthService import to a relative path after Jest exposed unresolved `src/auth/auth.service` resolution. Existing developer authentication changes were otherwise preserved.
+- Verified under Node 24.21.0: all 48 tests across six suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests required permission to bind temporary local ports.
+- Limits: this does not verify PostgreSQL session storage, AppModule wiring, real charger commands, session expiry, browser CORS, or resource ownership authorization. Authenticated drivers can still request commands without a session-ownership policy.
+- Concept practiced: a rejected HTTP response alone does not prove absence of side effects; tests must also assert that downstream command services were never called.
+- Commit checkpoint: review and commit this bounded authentication increment on feature/driver-auth. Credentialed browser requests and CORS remain the next planned integration work.
+
 ## 2026-10-20 — Logout and session invalidation coverage
 
 - Developer implemented POST /auth/logout: awaits session destruction, clears connect.sid at path /, and returns 204. Store failures propagate before cookie clearing.
