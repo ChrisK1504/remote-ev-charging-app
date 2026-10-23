@@ -1,5 +1,17 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-22 — End-of-day session ownership checkpoint
+
+- Implemented backend-generated unique user tags and internal tag lookup; HTTP remote start derives the tag from the authenticated user. Client-supplied tags are ignored, with regression coverage proving they cannot override the stored tag.
+- ChargingSession now maps nullable userId. Session creation resolves the reported tag to a user; unknown tags produce a null owner and an Invalid authorization outcome, while known tags return Accepted. The handler uses the returned transaction ID and authorization outcome. Unknown-tag behavior, authorization audit persistence, and real charger behavior are not fully verified.
+- Added HTTP stop ownership enforcement: a session owner must match the authenticated user; another owner or a null owner receives ForbiddenException before command dispatch. Updated the successful stop fixture to include user-1 ownership.
+- Independently verified at this checkpoint: all 56 tests across six suites pass under Node 24.21.0; backend TypeScript --noEmit and git diff --check pass. Working tree was clean before this journal entry.
+- Coverage gaps: explicit HTTP tests for a different owner and null owner are still missing. PostgreSQL migration 006 application/foreign-key behavior and a full simulator start-meter-stop cycle with persisted ownership remain unverified. Pending-start correlation is deferred; app-initiated charging is the confirmed current scope.
+- Learning: distinguish authentication from resource authorization, server-side login sessions from charging sessions, mocked input from expected protocol output, and business rejection from protocol errors. Practice tracing identities across HTTP, OCPP, and persistence; avoid assuming a reported tag proves which remote command caused an event.
+- Next atomic task: add stop authorization regressions for another user and an unowned session, asserting HTTP 403 and zero remote-stop calls. Then verify the full lifecycle with PostgreSQL and the simulator before declaring ownership complete or merging feature/session-ownership.
+- Reflection prompts for next session: explain why a valid cookie alone does not permit stopping a session; why a test fixture needs userId; why unknown tags and failed database lookups differ; and what the current mock tests cannot establish about physical charging.
+- Commit checkpoint: commit this progress note; keep the ownership branch open until rejection regressions and database/simulator verification are complete.
+
 ## 2026-10-22 — Test contract repairs
 
 - Replaced the misleading client-tag rejection case with an assertion that the supplied tag is ignored and the stored user tag is sent. Updated SessionService test construction for its UserService dependency and the OCPP persistence mock for the new authorization outcome return contract.

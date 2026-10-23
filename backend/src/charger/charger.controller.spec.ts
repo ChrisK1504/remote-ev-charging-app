@@ -221,4 +221,31 @@ describe('Charger command authentication (HTTP)', () => {
     expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
     expect(ocpp.getActiveSession).not.toHaveBeenCalled();
   });
+
+  it('rejects a user from stopping another users session', async () => {
+    const client = await login();
+
+    ocpp.getActiveSession.mockResolvedValueOnce({
+      transactionId: 42,
+      userId: 'user-2',
+    });
+
+    await client.post('/chargers/CP_001/connector/1/stop').expect(403);
+
+    expect(ocpp.getActiveSession).toHaveBeenCalledWith('CP_001', 1);
+    expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
+  });
+  it('rejects a user from stopping an unowned session', async () => {
+    const client = await login();
+
+    ocpp.getActiveSession.mockResolvedValueOnce({
+      transactionId: 42,
+      userId: null,
+    });
+
+    await client.post('/chargers/CP_001/connector/1/stop').expect(403);
+
+    expect(ocpp.getActiveSession).toHaveBeenCalledWith('CP_001', 1);
+    expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
+  });
 });
