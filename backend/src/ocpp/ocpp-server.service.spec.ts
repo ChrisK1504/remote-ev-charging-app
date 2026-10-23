@@ -7,7 +7,7 @@ import {
   SessionService,
 } from '../session/session.service';
 
-describe('StopTransaction case', () => {
+describe('StopTransaction', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
     const complete = jest.fn().mockResolvedValue(false);
 
@@ -310,5 +310,148 @@ describe('StartTransaction case', () => {
         {},
       ]),
     );
+  });
+});
+
+describe('Outbound command correlation', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('ignores a response from a different socket', async () => {
+    const sendA = jest.fn();
+    const sendB = jest.fn();
+
+    const socketA = {
+      send: sendA,
+      readyState: WebSocket.OPEN,
+    } as unknown as WebSocket;
+
+    const socketB = {
+      send: sendB,
+      readyState: WebSocket.OPEN,
+    } as unknown as WebSocket;
+
+    const connections = new ConnectionManagerService();
+    connections.add('CP_A', socketA);
+
+    const sessions = {} as SessionService;
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      connections,
+      sessions,
+    );
+
+    const command = service.remoteStartTransaction('CP_A', {
+      connectorId: 1,
+      idTag: 'TEST',
+    });
+
+    expect(sendA).toHaveBeenCalledTimes(1);
+
+    const sentMessage = JSON.parse(sendA.mock.calls[0][0] as string) as [
+      number,
+      string,
+      string,
+      unknown,
+    ];
+
+    const messageId = sentMessage[1];
+
+    const onResolved = jest.fn();
+    const onRejected = jest.fn();
+
+    const observedCommand = command.then(onResolved, onRejected);
+
+    await service['handleMessage'](
+      'CP_B',
+      socketB,
+      JSON.stringify([3, messageId, { status: 'Rejected' }]),
+    );
+
+    expect(onResolved).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+
+    await service['handleMessage'](
+      'CP_A',
+      socketA,
+      JSON.stringify([3, messageId, { status: 'Accepted' }]),
+    );
+
+    await observedCommand;
+
+    expect(onResolved).toHaveBeenCalledTimes(1);
+    expect(onResolved).toHaveBeenCalledWith({ status: 'Accepted' });
+    expect(onRejected).not.toHaveBeenCalled();
+  });
+
+  it('matches out of order responses to their commands', async () => {
+    const send = jest.fn();
+    const socket = {
+      send,
+      readyState: WebSocket.OPEN,
+    } as unknown as WebSocket;
+
+    const connections = new ConnectionManagerService();
+    connections.add('CP_A', socket);
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      connections,
+      {} as SessionService,
+    );
+
+    const startACommand = service.remoteStartTransaction('CP_A', {
+      connectorId: 1,
+      idTag: 'TEST',
+    });
+
+    const startBCommand = service.remoteStartTransaction('CP_A', {
+      connectorId: 2,
+      idTag: 'TEST2',
+    });
+
+    expect(send).toHaveBeenCalledTimes(2);
+
+    const startAMessage = JSON.parse(send.mock.calls[0][0] as string);
+    const startBMessage = JSON.parse(send.mock.calls[1][0] as string);
+
+    const startAId = startAMessage[1] as string;
+    const startBId = startBMessage[1] as string;
+
+    expect(startAId).not.toBe(startBId);
+
+    const onAResolved = jest.fn();
+    const observedA = startACommand.then(onAResolved);
+
+    await service['handleMessage'](
+      'CP_A',
+      socket,
+      JSON.stringify([3, startBId, { status: 'Rejected' }]),
+    );
+
+    await expect(startBCommand).resolves.toEqual({
+      status: 'Rejected',
+    });
+
+    expect(onAResolved).not.toHaveBeenCalled();
+
+    await service['handleMessage'](
+      'CP_A',
+      socket,
+      JSON.stringify([3, startAId, { status: 'Accepted' }]),
+    );
+
+    await observedA;
+
+    expect(onAResolved).toHaveBeenCalledTimes(1);
+    expect(onAResolved).toHaveBeenCalledWith({
+      status: 'Accepted',
+    });
   });
 });
