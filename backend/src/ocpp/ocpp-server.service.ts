@@ -7,10 +7,9 @@ import {
 } from '@nestjs/common';
 import { WebSocket, WebSocketServer } from 'ws';
 import { ChargeStateService } from './charger-state.service';
-import { ConnectionManagerServie } from './connection-manager.service';
+import { ConnectionManagerService as ConnectionManagerService } from './connection-manager.service';
 import { randomUUID } from 'crypto';
 import {
-  ActiveTransaction,
   AuthorizeRequest,
   AuthorizeResponse,
   BootNotificationRequest,
@@ -28,6 +27,11 @@ import {
   StopTransactionRequest,
 } from './ocpp.types';
 
+import {
+  ActiveSessionConflictError,
+  SessionService,
+} from '../session/session.service';
+
 interface PendingRequest {
   resolve: (payload: unknown) => void;
   reject: (error: Error) => void;
@@ -37,24 +41,21 @@ interface PendingRequest {
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
-  private transactionId: number = 0;
   private readonly pendingRequests = new Map<string, PendingRequest>();
-  private readonly transactions = new Map<number, ActiveTransaction>();
 
   constructor(
     private readonly chargeStateService: ChargeStateService,
-    private readonly connectionManagerService: ConnectionManagerServie,
+    private readonly connectionManagerService: ConnectionManagerService,
+    private readonly sessionService: SessionService,
   ) {}
 
-  getActiveTransaction(chargePointId: string, connectorId: number) {
-    console.log(this.transactions.values());
-    const transaction = [...this.transactions.values()].find(
-      (transaction) =>
-        transaction.chargePointId === chargePointId &&
-        transaction.connectorId === connectorId,
+  async getActiveSession(chargePointId: string, connectorId: number) {
+    const activeSession = await this.sessionService.findActive(
+      chargePointId,
+      connectorId,
     );
-    console.log(transaction);
-    return transaction;
+    console.log(activeSession);
+    return activeSession;
   }
 
   remoteStartTransaction(
@@ -232,30 +233,45 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
           {
             const request = payload as StartTransactionRequest;
 
-            const transactionId = this.transactionId++;
-            this.transactions.set(transactionId, {
-              transactionId: transactionId,
-              chargePointId: chargePointId,
-              connectorId: request.connectorId,
-              idTag: request.idTag,
-              meterStart: request.meterStart,
-              startedAt: request.timestamp,
-            });
-
-            console.log(this.transactions.values());
-
             console.log(
               `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
             );
 
-            const response: StartTransactionResponse = {
-              transactionId: transactionId,
-              idTagInfo: {
-                status: 'Accepted',
-              },
-            };
+            try {
+              const outcome = await this.sessionService.start({
+                chargePointId,
+                connectorId: request.connectorId,
+                idTag: request.idTag,
+                meterStart: request.meterStart,
+                startedAt: new Date(request.timestamp),
+              });
 
-            this.sendCallResult(socket, messageId, response);
+              const response: StartTransactionResponse = {
+                transactionId: outcome.transactionId,
+                idTagInfo: {
+                  status: outcome.authorizationStatus,
+                },
+              };
+
+              this.sendCallResult(socket, messageId, response);
+            } catch (error) {
+              if (error instanceof ActiveSessionConflictError) {
+                console.warn(
+                  `StartTransaction conflict: ${chargePointId} connector ${request.connectorId}, message ${messageId}`,
+                );
+                socket.send(
+                  JSON.stringify([
+                    OcppMessageType.CallError,
+                    messageId,
+                    'GenericError',
+                    'Connector already has an active session',
+                    {},
+                  ]),
+                );
+              } else {
+                throw error;
+              }
+            }
           }
           break;
         case 'StopTransaction':
@@ -266,18 +282,19 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               `${chargePointId} Stop Transaction: ${JSON.stringify(request)}`,
             );
 
-            const requestedChargePointId = this.transactions.get(
-              request.transactionId,
-            )?.chargePointId;
+            const result = await this.sessionService.complete({
+              transactionId: request.transactionId,
+              chargePointId: chargePointId,
+              endedAt: new Date(request.timestamp),
+              meterStop: request.meterStop,
+            });
 
-            if (requestedChargePointId) {
-              if (requestedChargePointId === chargePointId) {
-                this.transactions.delete(request.transactionId);
-              } else {
-                console.log(
-                  `Charger ${chargePointId} trying to stop transaction with transactionId:${request.transactionId} from charge point:${requestedChargePointId}`,
-                );
-              }
+            if (result) {
+              console.log(`Completed transaction ${request.transactionId}`);
+            } else {
+              console.log(
+                `No active session matched transaction ${request.transactionId} for charger ${chargePointId}`,
+              );
             }
 
             this.sendCallResult(socket, messageId, {});

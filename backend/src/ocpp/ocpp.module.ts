@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { OcppServerService } from './ocpp-server.service';
 import { ChargeStateService } from './charger-state.service';
-import { ConnectionManagerServie } from './connection-manager.service';
+import { ConnectionManagerService } from './connection-manager.service';
+import { SessionModule } from '../session/session.module';
 
 @Module({
-  providers: [OcppServerService, ChargeStateService, ConnectionManagerServie],
+  imports: [SessionModule],
+  providers: [OcppServerService, ChargeStateService, ConnectionManagerService],
   exports: [OcppServerService, ChargeStateService],
 })
 export class OcppModule {}

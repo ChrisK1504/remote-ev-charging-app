@@ -504,6 +504,8 @@ Default mode: /next, but only after initial reconnaissance has been completed.
 8. Prefer evidence over confidence.
 9. Treat production behavior as more important than happy-path demos.
 10. Make me progressively less dependent on AI.
+11. Record and explain significant changes in the codebase using already existing .md files.
+12. Tell me when the moment is to commit, branch out, or merge with main.
 
 **Success is not a large codebase. Success is a system whose behavior I can explain, test, debug, secure, and defend in an engineering review.**
 

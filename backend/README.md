@@ -27,9 +27,16 @@
 
 ## Project setup
 
+Use Node.js **24.19.0**, pinned in `.nvmrc` and `package.json`. From the repository root, with nvm installed:
+
 ```bash
-$ npm install
+cd backend
+nvm install
+nvm use
+npm ci
 ```
+
+Run `nvm use` from `backend` in each new shell. Node 22.23.3 fails to load the ESM NestJS/TypeORM dependencies in the current Jest setup. npm's `engines` field documents the required version; it does not switch runtimes automatically.
 
 ## Compile and run the project
 
@@ -48,7 +55,10 @@ $ npm run start:prod
 
 ```bash
 # unit tests
-$ npm run test
+$ npm test -- --runInBand
+
+# TypeScript check (no generated files)
+$ npx tsc --noEmit
 
 # e2e tests
 $ npm run test:e2e
@@ -56,6 +66,8 @@ $ npm run test:e2e
 # test coverage
 $ npm run test:cov
 ```
+
+Test commands share the VM-modules flag and disable Watchman discovery so tests do not need a system Watchman service. The existing e2e test is a stale starter expecting `Hello World!` at `/`; it is not evidence of charging-system correctness.
 
 ## Deployment
 

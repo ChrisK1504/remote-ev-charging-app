@@ -176,7 +176,5 @@ export interface OcppActionMap {
   StopTransaction: {
     request: StopTransactionRequest;
     response: RemoteStopTransactionResponse;
-  }
-
-
+  };
 }
