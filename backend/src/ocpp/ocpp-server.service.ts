@@ -238,7 +238,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
             );
 
             try {
-              const newSession = await this.sessionService.start({
+              const outcome = await this.sessionService.start({
                 chargePointId,
                 connectorId: request.connectorId,
                 idTag: request.idTag,
@@ -247,29 +247,30 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               });
 
               const response: StartTransactionResponse = {
-                transactionId: newSession.transactionId,
+                transactionId: outcome.transactionId,
                 idTagInfo: {
-                  status: 'Accepted',
+                  status: outcome.authorizationStatus,
                 },
               };
 
               this.sendCallResult(socket, messageId, response);
             } catch (error) {
-              if (!(error instanceof ActiveSessionConflictError)) {
+              if (error instanceof ActiveSessionConflictError) {
+                console.warn(
+                  `StartTransaction conflict: ${chargePointId} connector ${request.connectorId}, message ${messageId}`,
+                );
+                socket.send(
+                  JSON.stringify([
+                    OcppMessageType.CallError,
+                    messageId,
+                    'GenericError',
+                    'Connector already has an active session',
+                    {},
+                  ]),
+                );
+              } else {
                 throw error;
               }
-              console.warn(
-                `StartTransaction conflict: ${chargePointId} connector ${request.connectorId}, message ${messageId}`,
-              );
-              socket.send(
-                JSON.stringify([
-                  OcppMessageType.CallError,
-                  messageId,
-                  'GenericError',
-                  'Connector already has an active session',
-                  {},
-                ]),
-              );
             }
           }
           break;

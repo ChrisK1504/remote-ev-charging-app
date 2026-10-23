@@ -28,8 +28,12 @@ async function main() {
 
   try {
     const users = app.get(UserService);
-    const SEED_EMAIL = 'driver@example.com';
-    const SEED_PASSWORD = 'testTest123';
+    const SEED_EMAIL = process.argv[2] as string;
+    const SEED_PASSWORD = process.argv[3] as string;
+
+    if (!SEED_EMAIL || !SEED_PASSWORD) {
+      throw new Error('Usage: seed-user <email> <password>');
+    }
     const result = await users.create({
       email: SEED_EMAIL,
       password: SEED_PASSWORD,

@@ -24,6 +24,7 @@ describe('UserService.create', () => {
       id: expect.any(String),
       email: 'test@email.com',
       passwordHash: expect.any(String),
+      idTag: expect.stringMatching(/^[0-9a-f]{20}$/),
     });
 
     expect(save).toHaveBeenCalledTimes(1);

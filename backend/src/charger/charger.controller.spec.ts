@@ -18,6 +18,7 @@ describe('Charger command authentication (HTTP)', () => {
   const credentials = { email: 'driver@example.com', password: 'testTest123!' };
   const repository = { findOne: jest.fn() };
   const state = { get: jest.fn() };
+  const storedTag = '0123456789abcdef0123';
   const ocpp = {
     getActiveSession: jest.fn(),
     remoteStartTransaction: jest.fn(),
@@ -62,13 +63,17 @@ describe('Charger command authentication (HTTP)', () => {
       id: 'user-1',
       email: credentials.email,
       passwordHash,
+      idTag: storedTag,
     });
     state.get.mockReturnValue({
       id: 'CP_001',
       connected: true,
       connectors: new Map(),
     });
-    ocpp.getActiveSession.mockResolvedValue({ transactionId: 42 });
+    ocpp.getActiveSession.mockResolvedValue({
+      transactionId: 42,
+      userId: 'user-1',
+    });
     ocpp.remoteStartTransaction.mockResolvedValue({ status: 'Accepted' });
     ocpp.remoteStopTransaction.mockResolvedValue({ status: 'Accepted' });
   });
@@ -95,7 +100,7 @@ describe('Charger command authentication (HTTP)', () => {
     {
       name: 'start',
       path: '/chargers/CP_001/start',
-      body: { idTag: 'TEST', connectorId: 1 },
+      body: { connectorId: 1 },
     },
     { name: 'stop', path: '/chargers/CP_001/connector/1/stop', body: {} },
   ])('$name', ({ name, path, body }) => {
@@ -135,10 +140,10 @@ describe('Charger command authentication (HTTP)', () => {
       });
       if (name === 'start') {
         expect(ocpp.remoteStartTransaction).toHaveBeenCalledTimes(1);
-        expect(ocpp.remoteStartTransaction).toHaveBeenCalledWith(
-          'CP_001',
-          body,
-        );
+        expect(ocpp.remoteStartTransaction).toHaveBeenCalledWith('CP_001', {
+          connectorId: 1,
+          idTag: storedTag,
+        });
         expect(ocpp.getActiveSession).not.toHaveBeenCalled();
         expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
       } else {
@@ -158,5 +163,89 @@ describe('Charger command authentication (HTTP)', () => {
       expect(repository.findOne).not.toHaveBeenCalled();
       expectNoChargerAccess();
     });
+  });
+
+  it('ignores a client-supplied tag and dispatches the stored user tag', async () => {
+    const client = await login();
+
+    await client
+      .post('/chargers/CP_001/start')
+      .send({ connectorId: 1, idTag: 'another-users-tag' })
+      .expect(200);
+
+    expect(ocpp.remoteStartTransaction).toHaveBeenCalledTimes(1);
+    expect(ocpp.remoteStartTransaction).toHaveBeenCalledWith('CP_001', {
+      connectorId: 1,
+      idTag: storedTag,
+    });
+  });
+
+  it('rejects start when the user disappears before the charging-identity lookup', async () => {
+    const client = await login();
+    repository.findOne
+      .mockResolvedValueOnce({ id: 'user-1', email: credentials.email })
+      .mockResolvedValueOnce(null);
+
+    await client
+      .post('/chargers/CP_001/start')
+      .send({ connectorId: 1 })
+      .expect(401);
+
+    expect(repository.findOne).toHaveBeenCalledTimes(2);
+    expect(repository.findOne).toHaveBeenNthCalledWith(2, {
+      where: { id: 'user-1' },
+      select: { idTag: true },
+    });
+    expect(ocpp.remoteStartTransaction).not.toHaveBeenCalled();
+    expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
+    expect(ocpp.getActiveSession).not.toHaveBeenCalled();
+  });
+
+  it('sends no command when the charging-identity lookup fails', async () => {
+    const client = await login();
+    repository.findOne
+      .mockResolvedValueOnce({ id: 'user-1', email: credentials.email })
+      .mockRejectedValueOnce(new Error('Database unavailable'));
+
+    await client
+      .post('/chargers/CP_001/start')
+      .send({ connectorId: 1 })
+      .expect(500);
+
+    expect(repository.findOne).toHaveBeenCalledTimes(2);
+    expect(repository.findOne).toHaveBeenNthCalledWith(2, {
+      where: { id: 'user-1' },
+      select: { idTag: true },
+    });
+    expect(ocpp.remoteStartTransaction).not.toHaveBeenCalled();
+    expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
+    expect(ocpp.getActiveSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects a user from stopping another users session', async () => {
+    const client = await login();
+
+    ocpp.getActiveSession.mockResolvedValueOnce({
+      transactionId: 42,
+      userId: 'user-2',
+    });
+
+    await client.post('/chargers/CP_001/connector/1/stop').expect(403);
+
+    expect(ocpp.getActiveSession).toHaveBeenCalledWith('CP_001', 1);
+    expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
+  });
+  it('rejects a user from stopping an unowned session', async () => {
+    const client = await login();
+
+    ocpp.getActiveSession.mockResolvedValueOnce({
+      transactionId: 42,
+      userId: null,
+    });
+
+    await client.post('/chargers/CP_001/connector/1/stop').expect(403);
+
+    expect(ocpp.getActiveSession).toHaveBeenCalledWith('CP_001', 1);
+    expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
   });
 });

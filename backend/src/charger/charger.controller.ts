@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   NotFoundException,
@@ -16,6 +17,7 @@ import { OcppServerService } from '../ocpp/ocpp-server.service';
 import type { ChargePointState } from '../ocpp/ocpp.types';
 import express from 'express';
 import { AuthService } from '../auth/auth.service';
+import { UserService } from '../users/user.service';
 
 @Controller('chargers')
 export class ChargerController {
@@ -23,6 +25,7 @@ export class ChargerController {
     private readonly chargeStateService: ChargeStateService,
     private readonly ocppServerService: OcppServerService,
     private readonly authService: AuthService,
+    private readonly userService: UserService,
   ) {}
 
   @Get()
@@ -54,19 +57,11 @@ export class ChargerController {
       throw new UnauthorizedException();
     }
     // We check database if the user still exists before proceeding
-    const user = await this.authService.getCurrentUser(currentUserId);
+    const authenticatedUser =
+      await this.authService.getCurrentUser(currentUserId);
 
     const payload = this.requireBody(body);
 
-    if (
-      typeof payload.idTag !== 'string' ||
-      payload.idTag.trim().length === 0 ||
-      payload.idTag.length > 20
-    ) {
-      throw new BadRequestException(
-        'idTag must be a non-empty string of at most 20 characters',
-      );
-    }
     if (
       payload.connectorId !== undefined &&
       (typeof payload.connectorId !== 'number' ||
@@ -76,8 +71,16 @@ export class ChargerController {
       throw new BadRequestException('connectorId must be a positive integer');
     }
     this.get(id);
+
+    const identity = await this.userService.findChargingIdentity(
+      authenticatedUser.id,
+    );
+
+    if (!identity) {
+      throw new UnauthorizedException();
+    }
     return this.ocppServerService.remoteStartTransaction(id, {
-      idTag: payload.idTag,
+      idTag: identity.idTag,
       ...(payload.connectorId !== undefined
         ? { connectorId: payload.connectorId }
         : {}),
@@ -87,11 +90,10 @@ export class ChargerController {
   @Post(':id/connector/:connector/stop')
   @HttpCode(200)
   async stop(
-    @Param('id') id: string,
+    @Param('id') chargePointId: string,
     @Param('connector', ParseIntPipe) connector: number,
     @Req() request: express.Request,
   ) {
-
     // Check if user is logged-in, session still hasn't expired.
     const currentUserId = request.session.userId;
     if (!currentUserId) {
@@ -101,15 +103,21 @@ export class ChargerController {
     const user = await this.authService.getCurrentUser(currentUserId);
 
     const session = await this.ocppServerService.getActiveSession(
-      id,
+      chargePointId,
       connector,
     );
 
     if (!session) {
-      throw new NotFoundException(`No active transactions on ${id}`);
+      throw new NotFoundException(`No active transactions on ${chargePointId}`);
     }
 
-    return this.ocppServerService.remoteStopTransaction(id, {
+    if (session.userId !== user.id) {
+      throw new ForbiddenException(
+        'You cannot stop a charging session you do not own',
+      );
+    }
+
+    return this.ocppServerService.remoteStopTransaction(chargePointId, {
       transactionId: session.transactionId,
     });
   }

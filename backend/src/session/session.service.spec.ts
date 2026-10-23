@@ -1,6 +1,13 @@
 import { ActiveSessionConflictError, SessionService } from './session.service';
 import { QueryFailedError, Repository } from 'typeorm';
 import { ChargingSession } from './charging-session.entity';
+import { UserService } from '../users/user.service';
+
+function chargingUsers() {
+  return {
+    findByIdTag: jest.fn().mockResolvedValue({ userId: 'user-1' }),
+  } as unknown as UserService;
+}
 
 describe('SessionService.complete', () => {
   it('includes charger ownership in the update conditions', async () => {
@@ -10,7 +17,7 @@ describe('SessionService.complete', () => {
       update,
     } as unknown as Repository<ChargingSession>;
 
-    const service = new SessionService(repository);
+    const service = new SessionService(repository, chargingUsers());
     const endedAt = new Date('2026-10-14T10:05:00Z');
 
     const completed = await service.complete({
@@ -43,7 +50,7 @@ describe('SessionService.complete', () => {
       update,
     } as unknown as Repository<ChargingSession>;
 
-    const service = new SessionService(repository);
+    const service = new SessionService(repository, chargingUsers());
     const endedAt = new Date('2026-10-14T10:05:00Z');
 
     const completed = await service.complete({
@@ -84,7 +91,7 @@ describe('SessionService.start', () => {
       create,
     } as unknown as Repository<ChargingSession>;
 
-    const service = new SessionService(repository);
+    const service = new SessionService(repository, chargingUsers());
 
     await expect(
       service.start({
@@ -123,7 +130,7 @@ describe('SessionService.start unrelated failures', () => {
       create: jest.fn().mockImplementation((input) => input),
       save: jest.fn().mockRejectedValue(error),
     } as unknown as Repository<ChargingSession>;
-    const service = new SessionService(repository);
+    const service = new SessionService(repository, chargingUsers());
     await expect(
       service.start({
         chargePointId: 'CP-A',

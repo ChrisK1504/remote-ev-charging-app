@@ -1,5 +1,42 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-23 — Session ownership integration evidence and merge checkpoint
+
+- Assistant-verified automated baseline in this session: 58 tests across six suites pass under Node 24.21.0; backend TypeScript --noEmit and working-tree git diff --check pass. The different-owner and null-owner stop regressions now exist and assert HTTP 403 with zero remote-stop calls, superseding the missing-test checkpoint below. These checks preceded the current developer edits to scripts/seed-user.ts; those edits have not been reviewed or reverified here.
+- Developer-provided PostgreSQL output confirms transaction 22 for CP_001, connector 1 is Completed, with its user_id and starting id_tag retained, populated start/end timestamps, meter_start 1547 Wh, and meter_stop 1569 Wh (22 Wh difference). This is manual evidence of a persisted simulator lifecycle; the assistant did not independently query PostgreSQL or operate the simulator.
+- Developer reports logging in as a different user in another browser: the charger was visible, but that user could not stop the active session. Exact HTTP status, absence of an outgoing command, and the database state immediately after that rejected attempt were not supplied as manual evidence. Automated regressions separately cover 403 and zero command dispatch.
+- Charger visibility is separate from session ownership: GET /chargers and GET /chargers/:id currently expose global in-memory charger state without authentication or user filtering. Whether drivers may see all stations and their live readings requires company confirmation; no charger-access ownership model has been established.
+- External simulator limitation observed in the supplied transaction-20 logs: remote start and meter reports used connector 2, and remote stop targeted transaction 20 correctly, but the simulator subsequently reported connector 1 as Finishing, DEMO1234 as the stop tag, and meterStop 0. Treat the simulator as a black box; do not compensate by rewriting incoming connector IDs or session ownership. The later connector-1 run produced a plausible final meter reading; multi-connector behavior and energy-accounting robustness remain unverified.
+- Remaining limits: restart recovery/reconciliation, real hardware behavior, duplicate-start handling, unknown-tag behavior, and migration/foreign-key failure cases are not established by this evidence. A completed session row does not validate every migration constraint or prove physical charging behavior.
+- Git history verified after fetching origin: session-ownership contains all session-persistence commits plus three ownership commits; session-persistence contains local main, including its one commit ahead of origin/main. Developer will perform ownership -> persistence -> main merges. Review the diff and rerun tests/TypeScript on the combined result; review and commit the current seed-script edits separately from this documentation if they are ready. No merge was performed by the assistant.
+- Next atomic task after merging: on a dedicated refactor branch from updated main, add outbound OCPP request-correlation characterization coverage before extracting the pending-request lifecycle. Keep extraction and behavioral fixes in separate increments.
+- Concepts practiced: authentication versus resource authorization, transaction identity versus connector status, reported device state versus persisted business state, and the limits of simulator/manual evidence. Be able to explain why a different stop idTag must not overwrite the session owner and why a correct transaction ID does not guarantee a consistent connector-status report.
+
+## 2026-10-22 — End-of-day session ownership checkpoint
+
+- Implemented backend-generated unique user tags and internal tag lookup; HTTP remote start derives the tag from the authenticated user. Client-supplied tags are ignored, with regression coverage proving they cannot override the stored tag.
+- ChargingSession now maps nullable userId. Session creation resolves the reported tag to a user; unknown tags produce a null owner and an Invalid authorization outcome, while known tags return Accepted. The handler uses the returned transaction ID and authorization outcome. Unknown-tag behavior, authorization audit persistence, and real charger behavior are not fully verified.
+- Added HTTP stop ownership enforcement: a session owner must match the authenticated user; another owner or a null owner receives ForbiddenException before command dispatch. Updated the successful stop fixture to include user-1 ownership.
+- Independently verified at this checkpoint: all 56 tests across six suites pass under Node 24.21.0; backend TypeScript --noEmit and git diff --check pass. Working tree was clean before this journal entry.
+- Coverage gaps: explicit HTTP tests for a different owner and null owner are still missing. PostgreSQL migration 006 application/foreign-key behavior and a full simulator start-meter-stop cycle with persisted ownership remain unverified. Pending-start correlation is deferred; app-initiated charging is the confirmed current scope.
+- Learning: distinguish authentication from resource authorization, server-side login sessions from charging sessions, mocked input from expected protocol output, and business rejection from protocol errors. Practice tracing identities across HTTP, OCPP, and persistence; avoid assuming a reported tag proves which remote command caused an event.
+- Next atomic task: add stop authorization regressions for another user and an unowned session, asserting HTTP 403 and zero remote-stop calls. Then verify the full lifecycle with PostgreSQL and the simulator before declaring ownership complete or merging feature/session-ownership.
+- Reflection prompts for next session: explain why a valid cookie alone does not permit stopping a session; why a test fixture needs userId; why unknown tags and failed database lookups differ; and what the current mock tests cannot establish about physical charging.
+- Commit checkpoint: commit this progress note; keep the ownership branch open until rejection regressions and database/simulator verification are complete.
+
+## 2026-10-22 — Test contract repairs
+
+- Replaced the misleading client-tag rejection case with an assertion that the supplied tag is ignored and the stored user tag is sent. Updated SessionService test construction for its UserService dependency and the OCPP persistence mock for the new authorization outcome return contract.
+- TypeScript exposed a null dereference on unknown tags; session creation now assigns a null owner when lookup returns null, matching the existing nullable entity.
+- Verified: 56 tests across six suites pass under Node 24.21.0; TypeScript --noEmit and git diff --check pass. This does not establish database migration correctness, unknown-tag behavior on hardware, or driver ownership enforcement. Pending-start design is deferred at the developer's request.
+
+## 2026-10-22 — Backend-assigned tag HTTP regression tests
+
+- Updated charger command tests to send only connectorId and expect the stored user tag in the outgoing OCPP command. Removed the duplicate UserService mock provider, retaining real AuthService/UserService with a mocked repository and isolated session MemoryStore.
+- Added cases for client-tag rejection, a missing user during the second lookup, and database failure during that lookup. Lookup failures assert no command dispatch.
+- Verification: 54 tests pass and two fail across six suites. The new rejection case exposes the missing controller check (expected 400, actual 200); the existing user-creation assertion lacks the newly generated idTag. TypeScript --noEmit and git diff --check pass. Production code was not changed in this test increment.
+- Database migration/application, real charger behavior, and session ownership enforcement remain unverified or unfinished. Resolve both failures before committing this increment.
+
 ## 2026-10-21 — Charger command authentication regression coverage
 
 - Added ten HTTP tests covering both charger start and stop: missing cookie, deleted user with a saved cookie, failed user lookup, authenticated dispatch, and command rejection after logout.

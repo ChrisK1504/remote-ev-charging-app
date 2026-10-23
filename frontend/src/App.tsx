@@ -11,7 +11,6 @@ import { Zap, PlugZap, Radio, LogOut, Activity } from 'lucide-react'
 import LoginForm, { type User } from './LoginForm'
 
 function ChargerControls({ charger }: { charger: Charger }) {
-  const [idTag, setIdTag] = useState('')
   const [connectorId, setConnectorId] = useState('1')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -22,10 +21,6 @@ function ChargerControls({ charger }: { charger: Charger }) {
     const connector = Number(connectorId)
     if (!Number.isSafeInteger(connector) || connector < 1) {
       setError('Enter a positive connector number.')
-      return
-    }
-    if (action === 'start' && !idTag.trim()) {
-      setError('Enter an ID tag.')
       return
     }
 
@@ -40,7 +35,7 @@ function ChargerControls({ charger }: { charger: Charger }) {
           method: 'POST',
           ...(action === 'start' ? {
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ idTag: idTag.trim(), connectorId: connector }),
+            body: JSON.stringify({ connectorId: connector }),
           } : {}),
         },
       )
@@ -64,8 +59,6 @@ function ChargerControls({ charger }: { charger: Charger }) {
           </label>
           <label>
             ID tag{' '}
-            <Input required maxLength={20} value={idTag}
-              onChange={(event) => setIdTag(event.target.value)} />
           </label>
           <Button type="submit"><Zap size={15} /> Start charging</Button>
           <Button variant="outline" type="button" onClick={() => void send('stop')}>Stop charging</Button>

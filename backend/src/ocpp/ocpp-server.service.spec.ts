@@ -6,7 +6,6 @@ import {
   ActiveSessionConflictError,
   SessionService,
 } from '../session/session.service';
-import { ChargingSession } from 'src/session/charging-session.entity';
 
 describe('StopTransaction case', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
@@ -173,9 +172,10 @@ describe('StopTransaction case', () => {
 
 describe('StartTransaction case', () => {
   it('sends response after persistence completion', async () => {
-    let resolveStart!: (session: ChargingSession) => void;
+    type Outcome = Awaited<ReturnType<SessionService['start']>>;
+    let resolveStart!: (outcome: Outcome) => void;
 
-    const persistence = new Promise<ChargingSession>((resolve) => {
+    const persistence = new Promise<Outcome>((resolve) => {
       resolveStart = resolve;
     });
 
@@ -217,7 +217,7 @@ describe('StartTransaction case', () => {
     });
     expect(send).not.toHaveBeenCalled();
 
-    resolveStart({ transactionId: 42 } as ChargingSession);
+    resolveStart({ transactionId: 42, authorizationStatus: 'Accepted' });
     await handling;
 
     expect(send).toHaveBeenCalledTimes(1);

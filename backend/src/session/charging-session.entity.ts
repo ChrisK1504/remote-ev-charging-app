@@ -14,6 +14,13 @@ export class ChargingSession {
   })
   transactionId!: number;
 
+  @Column({
+    name: 'user_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  userId!: string | null;
+
   @Column({ name: 'charge_point_id', type: 'text' })
   chargePointId!: string;
 
