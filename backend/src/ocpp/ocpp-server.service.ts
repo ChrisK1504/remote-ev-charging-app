@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  BadRequestException,
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
@@ -7,55 +8,49 @@ import {
 } from '@nestjs/common';
 import { WebSocket, WebSocketServer } from 'ws';
 import { ChargeStateService } from './charger-state.service';
-import { ConnectionManagerService as ConnectionManagerService } from './connection-manager.service';
+import { ConnectionManagerService } from './connection-manager.service';
 import { randomUUID } from 'crypto';
 import {
-  AuthorizeRequest,
-  AuthorizeResponse,
-  BootNotificationRequest,
-  BootNotificationResponse,
-  HeartBeatResponse,
-  MeterValuesRequest,
   OcppActionMap,
+  OcppCallMessage,
+  IncomingOcppCall,
   OcppCall,
+  OcppCallResult,
+  OcppCallError,
+  OcppErrorCode,
   OcppMessageType,
   RemoteStartTransactionRequest,
   RemoteStopTransactionRequest,
-  StartTransactionRequest,
-  StartTransactionResponse,
-  StatusNotificationRequest,
-  StopTransactionRequest,
 } from './ocpp.types';
 
 import {
   ActiveSessionConflictError,
   SessionService,
 } from '../session/session.service';
-
-interface PendingRequest {
-  resolve: (payload: unknown) => void;
-  reject: (error: Error) => void;
-  socket: WebSocket;
-}
+import { OcppCallHandlersService } from './ocpp-call-handlers.service';
+import { PendingRequestService } from './pending-request.service';
+import { validatePayload, isIncomingOcppAction } from './ocpp-validation';
+import {
+  isOcppCall,
+  isOcppCallResult,
+  isOcppCallError,
+  isOcppMessageId,
+} from './ocpp-message';
 
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
-  private readonly pendingRequests = new Map<string, PendingRequest>();
 
   constructor(
     private readonly chargeStateService: ChargeStateService,
     private readonly connectionManagerService: ConnectionManagerService,
     private readonly sessionService: SessionService,
+    private readonly pendingRequestService: PendingRequestService,
+    private readonly callHandlers: OcppCallHandlersService,
   ) {}
 
   async getActiveSession(chargePointId: string, connectorId: number) {
-    const activeSession = await this.sessionService.findActive(
-      chargePointId,
-      connectorId,
-    );
-    console.log(activeSession);
-    return activeSession;
+    return this.sessionService.findActive(chargePointId, connectorId);
   }
 
   remoteStartTransaction(
@@ -77,6 +72,9 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     action: A,
     payload: OcppActionMap[A]['request'],
   ): Promise<OcppActionMap[A]['response']> {
+    const validationError = validatePayload(action, 'request', payload);
+    if (validationError) throw new BadRequestException(validationError);
+
     const socket = this.connectionManagerService.get(chargePointId);
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -99,36 +97,55 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       JSON.stringify(message),
     );
 
-    return new Promise<OcppActionMap[A]['response']>((resolve, reject) => {
-      this.pendingRequests.set(messageId, {
-        resolve: (payload: unknown): void => {
-          resolve(payload as OcppActionMap[A]['response']);
-        },
-        reject,
-        socket,
-      });
+    const response = this.pendingRequestService.register(
+      messageId,
+      socket,
+      action,
+    );
+
+    try {
       socket.send(JSON.stringify(message));
+    } catch (error) {
+      this.pendingRequestService.reject(
+        messageId,
+        socket,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
 
-      setTimeout(() => {
-        const pending = this.pendingRequests.get(messageId);
-
-        if (!pending) {
-          return;
-        }
-        this.pendingRequests.delete(messageId);
-
-        reject(new Error(`${action} timed out`));
-      }, 10000);
-    });
+    return response as Promise<OcppActionMap[A]['response']>;
   }
 
   private sendCallResult<A extends keyof OcppActionMap>(
     socket: WebSocket,
     messageId: string,
     payload: OcppActionMap[A]['response'],
+    action: A,
   ): void {
-    const response = [3, messageId, payload];
+    const error = validatePayload(action, 'response', payload);
+    if (error) throw new Error(`Invalid ${action} response: ${error}`);
+    const response: OcppCallResult<OcppActionMap[A]['response']> = [
+      OcppMessageType.CallResult,
+      messageId,
+      payload,
+    ];
 
+    socket.send(JSON.stringify(response));
+  }
+
+  private sendCallError(
+    socket: WebSocket,
+    messageId: string,
+    code: OcppErrorCode,
+    description: string,
+  ): void {
+    const response: OcppCallError = [
+      OcppMessageType.CallError,
+      messageId,
+      code,
+      description,
+      {},
+    ];
     socket.send(JSON.stringify(response));
   }
 
@@ -137,15 +154,18 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     messageId: string,
     payload: unknown,
   ): void {
-    const pending = this.pendingRequests.get(messageId);
-
-    if (!pending || pending.socket !== socket) {
-      console.warn(`No pending requests for ${messageId}`);
+    const action = this.pendingRequestService.getAction(messageId, socket);
+    if (!action) return;
+    const error = validatePayload(action, 'response', payload);
+    if (error) {
+      this.pendingRequestService.reject(
+        messageId,
+        socket,
+        new BadGatewayException(`Invalid ${action} response: ${error}`),
+      );
       return;
     }
-
-    this.pendingRequests.delete(messageId);
-    pending.resolve(payload);
+    this.pendingRequestService.resolve(messageId, socket, payload);
   }
 
   private async handleMessage(
@@ -155,186 +175,122 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     console.log(`MESSAGE: ${rawMessage}`);
 
-    const message: unknown = JSON.parse(rawMessage);
-
-    if (!Array.isArray(message)) {
-      throw new Error('Invalid OCPP message');
+    let message: unknown;
+    try {
+      message = JSON.parse(rawMessage);
+    } catch {
+      throw new Error('Invalid OCPP JSON');
     }
-
-    const [messageTypeId, messageId, actionOrPayload, payload] =
-      message as unknown[];
-    if (typeof messageId !== 'string') {
-      throw new Error('Invalid OCPP message ID');
-    }
-
-    if (messageTypeId === 2) {
-      const action = actionOrPayload;
-      switch (action) {
-        case 'BootNotification':
-          {
-            const request = payload as BootNotificationRequest;
-            console.log(
-              `${chargePointId} BootNotification: ${JSON.stringify(request)}\n`,
-            );
-
-            const response: BootNotificationResponse = {
-              currentTime: new Date().toISOString(),
-              interval: 10,
-              status: 'Accepted',
-            };
-
-            this.sendCallResult(socket, messageId, response);
-            console.log('BootNotification accepted');
-          }
-          break;
-        case 'Heartbeat':
-          {
-            console.log(`${chargePointId} HeartBeat`);
-
-            const response: HeartBeatResponse = {
-              currentTime: new Date().toISOString(),
-            };
-            this.sendCallResult(socket, messageId, response);
-
-            console.log('Heartbeat responded');
-          }
-          break;
-        case 'StatusNotification':
-          {
-            const request = payload as StatusNotificationRequest;
-            console.log(
-              `${chargePointId} connector ${request.connectorId}: ${request.status}`,
-            );
-
-            this.chargeStateService.updateConnector(chargePointId, {
-              connectorId: request.connectorId,
-              status: request.status,
-              errorCode: request.errorCode,
-              updatedAt: new Date(),
-            });
-
-            this.sendCallResult(socket, messageId, {});
-          }
-          break;
-        case 'Authorize':
-          {
-            const request: AuthorizeRequest = payload as AuthorizeRequest;
-            console.log(`${chargePointId} Authorize: ${request.idTag}`);
-
-            const response: AuthorizeResponse = {
-              idTagInfo: {
-                status: 'Accepted',
-              },
-            };
-            this.sendCallResult(socket, messageId, response);
-          }
-          break;
-        case 'StartTransaction':
-          {
-            const request = payload as StartTransactionRequest;
-
-            console.log(
-              `Start transaction from: ${chargePointId} for connector: ${request.connectorId}`,
-            );
-
-            try {
-              const outcome = await this.sessionService.start({
-                chargePointId,
-                connectorId: request.connectorId,
-                idTag: request.idTag,
-                meterStart: request.meterStart,
-                startedAt: new Date(request.timestamp),
-              });
-
-              const response: StartTransactionResponse = {
-                transactionId: outcome.transactionId,
-                idTagInfo: {
-                  status: outcome.authorizationStatus,
-                },
-              };
-
-              this.sendCallResult(socket, messageId, response);
-            } catch (error) {
-              if (error instanceof ActiveSessionConflictError) {
-                console.warn(
-                  `StartTransaction conflict: ${chargePointId} connector ${request.connectorId}, message ${messageId}`,
-                );
-                socket.send(
-                  JSON.stringify([
-                    OcppMessageType.CallError,
-                    messageId,
-                    'GenericError',
-                    'Connector already has an active session',
-                    {},
-                  ]),
-                );
-              } else {
-                throw error;
-              }
-            }
-          }
-          break;
-        case 'StopTransaction':
-          {
-            const request: StopTransactionRequest =
-              payload as StopTransactionRequest;
-            console.log(
-              `${chargePointId} Stop Transaction: ${JSON.stringify(request)}`,
-            );
-
-            const result = await this.sessionService.complete({
-              transactionId: request.transactionId,
-              chargePointId: chargePointId,
-              endedAt: new Date(request.timestamp),
-              meterStop: request.meterStop,
-            });
-
-            if (result) {
-              console.log(`Completed transaction ${request.transactionId}`);
-            } else {
-              console.log(
-                `No active session matched transaction ${request.transactionId} for charger ${chargePointId}`,
-              );
-            }
-
-            this.sendCallResult(socket, messageId, {});
-          }
-          break;
-        case 'MeterValues': {
-          const request = payload as MeterValuesRequest;
-          this.chargeStateService.updateMeterValues(chargePointId, request);
-
-          this.sendCallResult<'MeterValues'>(socket, messageId, {});
-
-          break;
+    if (!Array.isArray(message)) throw new Error('Invalid OCPP message');
+    const messageTypeId: unknown = message[0];
+    switch (messageTypeId) {
+      case OcppMessageType.Call:
+        if (!isOcppCall(message)) {
+          this.handleInvalidEnvelope(socket, message[1], true);
+          return;
         }
-      }
-      return;
-    }
-
-    if (
-      messageTypeId === OcppMessageType.CallError &&
-      typeof messageId === 'string'
-    ) {
-      const pending = this.pendingRequests.get(messageId);
-      if (pending?.socket === socket) {
-        this.pendingRequests.delete(messageId);
-        pending.reject(
+        await this.handleCall(chargePointId, socket, message);
+        return;
+      case OcppMessageType.CallResult:
+        if (!isOcppCallResult(message)) {
+          this.handleInvalidEnvelope(socket, message[1], false);
+          return;
+        }
+        this.handleCallResult(socket, message[1], message[2]);
+        return;
+      case OcppMessageType.CallError:
+        if (!isOcppCallError(message)) {
+          this.handleInvalidEnvelope(socket, message[1], false);
+          return;
+        }
+        this.pendingRequestService.reject(
+          message[1],
+          socket,
           new BadGatewayException({
             message: 'Charger returned an OCPP error',
-            errorCode: actionOrPayload,
-            description: payload,
+            errorCode: message[2],
+            description: message[3],
           }),
         );
-      }
+        return;
+      default:
+        // Section 4.1.3: ignore unknown message types without inspecting their payload.
+        return;
+    }
+  }
+
+  private handleInvalidEnvelope(
+    socket: WebSocket,
+    messageId: unknown,
+    isCall: boolean,
+  ): void {
+    if (!isOcppMessageId(messageId)) throw new Error('Invalid OCPP message ID');
+    if (isCall) {
+      this.sendCallError(
+        socket,
+        messageId,
+        'FormationViolation',
+        'Invalid CALL envelope',
+      );
+    } else {
+      this.pendingRequestService.reject(
+        messageId,
+        socket,
+        new BadGatewayException('Invalid OCPP response envelope'),
+      );
+    }
+  }
+
+  private async handleCall(
+    chargePointId: string,
+    socket: WebSocket,
+    message: OcppCallMessage,
+  ): Promise<void> {
+    const [, messageId, action, payload] = message;
+    if (!isIncomingOcppAction(action)) {
+      this.sendCallError(
+        socket,
+        messageId,
+        'NotImplemented',
+        'Unsupported action',
+      );
       return;
     }
-
-    if (messageTypeId === 3) {
-      const payload = actionOrPayload;
-
-      this.handleCallResult(socket, messageId, payload);
+    const validationError = validatePayload(action, 'request', payload);
+    if (validationError) {
+      this.sendCallError(
+        socket,
+        messageId,
+        'FormationViolation',
+        'Payload does not match action schema',
+      );
+      console.warn(
+        `${chargePointId} invalid ${action}, message ${messageId}: ${validationError}`,
+      );
       return;
+    }
+    // The envelope, incoming action and action-specific payload have all been checked.
+    const call = message as unknown as IncomingOcppCall;
+    try {
+      const response = await this.callHandlers.handle(chargePointId, call);
+      this.sendCallResult(socket, messageId, response, action);
+    } catch (error) {
+      if (
+        call[2] === 'StartTransaction' &&
+        error instanceof ActiveSessionConflictError
+      ) {
+        console.warn(
+          `StartTransaction conflict: ${chargePointId} connector ${call[3].connectorId}, message ${messageId}`,
+        );
+        this.sendCallError(
+          socket,
+          messageId,
+          'GenericError',
+          'Connector already has an active session',
+        );
+      } else {
+        throw error;
+      }
     }
   }
 
