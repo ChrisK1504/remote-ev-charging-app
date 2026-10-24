@@ -1,3 +1,4 @@
+import { OcppCallHandlersService } from './ocpp-call-handlers.service';
 import { payloadSchemas, validatePayload } from './ocpp-validation';
 import { OcppActionMap } from './ocpp.types';
 import { OcppServerService } from './ocpp-server.service';
@@ -143,6 +144,10 @@ describe('OCPP validation boundary', () => {
       connections,
       sessions as unknown as SessionService,
       new PendingRequestService(),
+      new OcppCallHandlersService(
+        states,
+        sessions as unknown as SessionService,
+      ),
     );
     return { service, states, sessions, send, socket };
   }

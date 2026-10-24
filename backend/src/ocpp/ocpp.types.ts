@@ -21,6 +21,20 @@ export type OcppCall<A extends keyof OcppActionMap> = [
   OcppActionMap[A]['request'],
 ];
 
+export const INCOMING_OCPP_ACTIONS = [
+  'BootNotification',
+  'Heartbeat',
+  'StatusNotification',
+  'Authorize',
+  'StartTransaction',
+  'StopTransaction',
+  'MeterValues',
+] as const satisfies readonly (keyof OcppActionMap)[];
+export type IncomingOcppAction = (typeof INCOMING_OCPP_ACTIONS)[number];
+export type IncomingOcppCall = {
+  [A in IncomingOcppAction]: OcppCall<A>;
+}[IncomingOcppAction];
+
 export type OcppCallResult<T = OcppPayload> = [
   messageType: OcppMessageType.CallResult,
   messageId: string,
@@ -219,15 +233,6 @@ export interface MeterValuesRequest {
 }
 
 export type MeterValuesResponse = Record<string, never>;
-
-export interface ActiveTransaction {
-  transactionId: number;
-  chargePointId: string;
-  connectorId: number;
-  idTag: string;
-  meterStart: number;
-  startedAt: string;
-}
 
 export interface ChargingProfile {
   chargingProfileId: number;

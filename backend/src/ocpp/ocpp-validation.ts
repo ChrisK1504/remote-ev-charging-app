@@ -1,5 +1,9 @@
 import Ajv from 'ajv';
-import { OcppActionMap } from './ocpp.types';
+import {
+  OcppActionMap,
+  INCOMING_OCPP_ACTIONS,
+  IncomingOcppAction,
+} from './ocpp.types';
 
 // Local JSON Schema definitions transcribed from OCPP 1.6J edition 2 Core:
 // https://ocpp.md/ocpp-1.6j/schemas/core/
@@ -312,8 +316,10 @@ for (const [action, schemas] of Object.entries(payloadSchemas)) {
   }
 }
 
-export function isOcppAction(action: unknown): action is keyof OcppActionMap {
-  return typeof action === 'string' && Object.hasOwn(payloadSchemas, action);
+export function isIncomingOcppAction(
+  action: string,
+): action is IncomingOcppAction {
+  return INCOMING_OCPP_ACTIONS.some((candidate) => candidate === action);
 }
 
 export function validatePayload(
@@ -324,13 +330,3 @@ export function validatePayload(
   const validate = validators.get(`${action}.${direction}`)!;
   return validate(payload) ? undefined : ajv.errorsText(validate.errors);
 }
-
-export const incomingActions = new Set<string>([
-  'BootNotification',
-  'Heartbeat',
-  'Authorize',
-  'StatusNotification',
-  'StartTransaction',
-  'StopTransaction',
-  'MeterValues',
-]);

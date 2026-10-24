@@ -1,3 +1,4 @@
+import { OcppCallHandlersService } from './ocpp-call-handlers.service';
 import { WebSocket } from 'ws';
 import { ChargeStateService } from './charger-state.service';
 import { ConnectionManagerService } from './connection-manager.service';
@@ -22,6 +23,7 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     const sendB = jest.fn();
@@ -63,6 +65,7 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     const send = jest.fn();
@@ -97,6 +100,7 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     const send = jest.fn();
@@ -136,6 +140,7 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     const send = jest.fn();
@@ -196,6 +201,7 @@ describe('StartTransaction case', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     const handling = service['handleMessage'](
@@ -253,6 +259,7 @@ describe('StartTransaction case', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     await expect(
@@ -290,6 +297,7 @@ describe('StartTransaction case', () => {
       new ConnectionManagerService(),
       sessionService,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessionService),
     );
 
     await expect(
@@ -355,6 +363,7 @@ describe('Outbound command correlation', () => {
       connections,
       sessions,
       new PendingRequestService(),
+      new OcppCallHandlersService(new ChargeStateService(), sessions),
     );
 
     const command = service.remoteStartTransaction('CP_A', {
@@ -415,6 +424,10 @@ describe('Outbound command correlation', () => {
       connections,
       {} as SessionService,
       new PendingRequestService(),
+      new OcppCallHandlersService(
+        new ChargeStateService(),
+        {} as SessionService,
+      ),
     );
 
     const startACommand = service.remoteStartTransaction('CP_A', {
@@ -478,6 +491,10 @@ describe('Outbound command correlation', () => {
       connections,
       {} as SessionService,
       new PendingRequestService(),
+      new OcppCallHandlersService(
+        new ChargeStateService(),
+        {} as SessionService,
+      ),
     );
 
     const command = service.remoteStartTransaction('CP_A', {
@@ -512,6 +529,10 @@ describe('Outbound command correlation', () => {
       connections,
       {} as SessionService,
       new PendingRequestService(),
+      new OcppCallHandlersService(
+        new ChargeStateService(),
+        {} as SessionService,
+      ),
     );
 
     const command = service.remoteStartTransaction('CP_A', {
@@ -529,4 +550,56 @@ describe('Outbound command correlation', () => {
 
     await rejection;
   });
+});
+
+describe('Extracted OCPP call handlers', () => {
+  it.each([
+    [
+      'BootNotification',
+      { chargePointVendor: 'Vendor', chargePointModel: 'Model' },
+      { currentTime: expect.any(String), interval: 10, status: 'Accepted' },
+    ],
+    ['Heartbeat', {}, { currentTime: expect.any(String) }],
+    ['Authorize', { idTag: 'TAG' }, { idTagInfo: { status: 'Accepted' } }],
+    [
+      'StatusNotification',
+      { connectorId: 1, status: 'Charging', errorCode: 'NoError' },
+      {},
+    ],
+  ])(
+    'dispatches %s and sends exactly one correlated result',
+    async (action, payload, expected) => {
+      const states = new ChargeStateService();
+      states.connect('CP');
+      const sessions = {} as SessionService;
+      const send = jest.fn();
+      const socket = { send } as unknown as WebSocket;
+      const service = new OcppServerService(
+        states,
+        new ConnectionManagerService(),
+        sessions,
+        new PendingRequestService(),
+        new OcppCallHandlersService(states, sessions),
+      );
+      await service['handleMessage'](
+        'CP',
+        socket,
+        JSON.stringify([2, 'request-id', action, payload]),
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(send.mock.calls[0][0])).toEqual([
+        3,
+        'request-id',
+        expected,
+      ]);
+      if (action === 'StatusNotification') {
+        expect(states.get('CP')?.connectors.get(1)).toEqual({
+          connectorId: 1,
+          status: 'Charging',
+          errorCode: 'NoError',
+          updatedAt: expect.any(Date),
+        });
+      }
+    },
+  );
 });
