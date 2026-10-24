@@ -31,6 +31,13 @@ export interface ChargePointState {
 export interface BootNotificationRequest {
   chargePointModel: string;
   chargePointVendor: string;
+  chargePointSerialNumber?: string;
+  chargeBoxSerialNumber?: string;
+  firmwareVersion?: string;
+  iccid?: string;
+  imsi?: string;
+  meterType?: string;
+  meterSerialNumber?: string;
 }
 
 export interface BootNotificationResponse {
@@ -39,7 +46,7 @@ export interface BootNotificationResponse {
   status: 'Accepted' | 'Pending' | 'Rejected'; // Should be an enum
 }
 
-export type HeartbeatRequest = {};
+export type HeartbeatRequest = Record<string, never>;
 
 export interface HeartBeatResponse {
   currentTime: string;
@@ -51,6 +58,8 @@ export interface AuthorizeRequest {
 
 export interface AuthorizeTagInfo {
   status: 'Accepted' | 'Blocked' | 'Expired' | 'Invalid' | 'ConcurrentTx';
+  expiryDate?: string;
+  parentIdTag?: string;
 }
 
 export interface AuthorizeResponse {
@@ -59,17 +68,106 @@ export interface AuthorizeResponse {
 
 export interface StatusNotificationRequest {
   connectorId: number;
-  errorCode: 'NoError' | 'ConnectorLockFailure' | 'WeakSignal'; // More Options
-  status: 'Available' | 'Preparing' | 'Charging' | 'Unavailable' | 'Faulted'; // More Options
+  errorCode:
+    | 'ConnectorLockFailure'
+    | 'EVCommunicationError'
+    | 'GroundFailure'
+    | 'HighTemperature'
+    | 'InternalError'
+    | 'LocalListConflict'
+    | 'NoError'
+    | 'OtherError'
+    | 'OverCurrentFailure'
+    | 'PowerMeterFailure'
+    | 'PowerSwitchFailure'
+    | 'ReaderFailure'
+    | 'ResetFailure'
+    | 'UnderVoltage'
+    | 'OverVoltage'
+    | 'WeakSignal';
+  status:
+    | 'Available'
+    | 'Preparing'
+    | 'Charging'
+    | 'SuspendedEVSE'
+    | 'SuspendedEV'
+    | 'Finishing'
+    | 'Reserved'
+    | 'Unavailable'
+    | 'Faulted';
+  info?: string;
+  timestamp?: string;
+  vendorId?: string;
+  vendorErrorCode?: string;
 }
 
-export type StatusNotificationResponse = {};
+export type StatusNotificationResponse = Record<string, never>;
 
 export interface SampledValue {
   value: string;
-  measurand?: string;
-  unit?: string;
-  phase?: string;
+  context?:
+    | 'Interruption.Begin'
+    | 'Interruption.End'
+    | 'Sample.Clock'
+    | 'Sample.Periodic'
+    | 'Transaction.Begin'
+    | 'Transaction.End'
+    | 'Trigger'
+    | 'Other';
+  format?: 'Raw' | 'SignedData';
+  measurand?:
+    | 'Energy.Active.Export.Register'
+    | 'Energy.Active.Import.Register'
+    | 'Energy.Reactive.Export.Register'
+    | 'Energy.Reactive.Import.Register'
+    | 'Energy.Active.Export.Interval'
+    | 'Energy.Active.Import.Interval'
+    | 'Energy.Reactive.Export.Interval'
+    | 'Energy.Reactive.Import.Interval'
+    | 'Power.Active.Export'
+    | 'Power.Active.Import'
+    | 'Power.Offered'
+    | 'Power.Reactive.Export'
+    | 'Power.Reactive.Import'
+    | 'Power.Factor'
+    | 'Current.Import'
+    | 'Current.Export'
+    | 'Current.Offered'
+    | 'Voltage'
+    | 'Frequency'
+    | 'Temperature'
+    | 'SoC'
+    | 'RPM';
+  unit?:
+    | 'Wh'
+    | 'kWh'
+    | 'varh'
+    | 'kvarh'
+    | 'W'
+    | 'kW'
+    | 'VA'
+    | 'kVA'
+    | 'var'
+    | 'kvar'
+    | 'A'
+    | 'V'
+    | 'K'
+    | 'Celcius'
+    | 'Celsius'
+    | 'Fahrenheit'
+    | 'Percent';
+  phase?:
+    | 'L1'
+    | 'L2'
+    | 'L3'
+    | 'N'
+    | 'L1-N'
+    | 'L2-N'
+    | 'L3-N'
+    | 'L1-L2'
+    | 'L2-L3'
+    | 'L3-L1';
+  location?: 'Cable' | 'EV' | 'Inlet' | 'Outlet' | 'Body';
 }
 
 export interface MeterValue {
@@ -94,9 +192,33 @@ export interface ActiveTransaction {
   startedAt: string;
 }
 
+export interface ChargingProfile {
+  chargingProfileId: number;
+  transactionId?: number;
+  stackLevel: number;
+  chargingProfilePurpose:
+    'ChargePointMaxProfile' | 'TxDefaultProfile' | 'TxProfile';
+  chargingProfileKind: 'Absolute' | 'Recurring' | 'Relative';
+  recurrencyKind?: 'Daily' | 'Weekly';
+  validFrom?: string;
+  validTo?: string;
+  chargingSchedule: {
+    duration?: number;
+    startSchedule?: string;
+    chargingRateUnit: 'A' | 'W';
+    chargingSchedulePeriod: {
+      startPeriod: number;
+      limit: number;
+      numberPhases?: number;
+    }[];
+    minChargingRate?: number;
+  };
+}
+
 export interface RemoteStartTransactionRequest {
   idTag: string;
   connectorId?: number;
+  chargingProfile?: ChargingProfile;
 }
 
 export interface RemoteStartTransactionResponse {
@@ -108,10 +230,13 @@ export interface StartTransactionRequest {
   idTag: string;
   meterStart: number;
   timestamp: string;
+  reservationId?: number;
 }
 
 export interface StartTransactionTag {
   status: 'Accepted' | 'Blocked' | 'Expired' | 'Invalid' | 'ConcurrentTx';
+  expiryDate?: string;
+  parentIdTag?: string;
 }
 
 export interface StartTransactionResponse {
@@ -128,10 +253,28 @@ export interface RemoteStopTransactionResponse {
 }
 
 export interface StopTransactionRequest {
+  idTag?: string;
+  reason?:
+    | 'EmergencyStop'
+    | 'EVDisconnected'
+    | 'HardReset'
+    | 'Local'
+    | 'Other'
+    | 'PowerLoss'
+    | 'Reboot'
+    | 'Remote'
+    | 'SoftReset'
+    | 'UnlockCommand'
+    | 'DeAuthorized';
+  transactionData?: MeterValue[];
   meterStop: number;
   timestamp: string;
   transactionId: number;
 }
+export interface StopTransactionResponse {
+  idTagInfo?: AuthorizeTagInfo;
+}
+
 export interface OcppActionMap {
   MeterValues: {
     request: MeterValuesRequest;
@@ -175,6 +318,6 @@ export interface OcppActionMap {
 
   StopTransaction: {
     request: StopTransactionRequest;
-    response: RemoteStopTransactionResponse;
+    response: StopTransactionResponse;
   };
 }

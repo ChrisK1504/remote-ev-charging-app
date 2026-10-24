@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  BadRequestException,
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
@@ -32,6 +33,13 @@ import {
   SessionService,
 } from '../session/session.service';
 import { PendingRequestService } from './pending-request.service';
+import {
+  validatePayload,
+  isOcppAction,
+  incomingActions,
+  errorCodes,
+  isObject,
+} from './ocpp-validation';
 
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
@@ -72,6 +80,9 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     action: A,
     payload: OcppActionMap[A]['request'],
   ): Promise<OcppActionMap[A]['response']> {
+    const validationError = validatePayload(action, 'request', payload);
+    if (validationError) throw new BadRequestException(validationError);
+
     const socket = this.connectionManagerService.get(chargePointId);
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -117,7 +128,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     socket: WebSocket,
     messageId: string,
     payload: OcppActionMap[A]['response'],
+    action: A,
   ): void {
+    const error = validatePayload(action, 'response', payload);
+    if (error) throw new Error(`Invalid ${action} response: ${error}`);
     const response = [3, messageId, payload];
 
     socket.send(JSON.stringify(response));
@@ -128,6 +142,17 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     messageId: string,
     payload: unknown,
   ): void {
+    const action = this.pendingRequestService.getAction(messageId, socket);
+    if (!action) return;
+    const error = validatePayload(action, 'response', payload);
+    if (error) {
+      this.pendingRequestService.reject(
+        messageId,
+        socket,
+        new BadGatewayException(`Invalid ${action} response: ${error}`),
+      );
+      return;
+    }
     this.pendingRequestService.resolve(messageId, socket, payload);
   }
 
@@ -138,20 +163,79 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     console.log(`MESSAGE: ${rawMessage}`);
 
-    const message: unknown = JSON.parse(rawMessage);
-
-    if (!Array.isArray(message)) {
-      throw new Error('Invalid OCPP message');
+    let message: unknown;
+    try {
+      message = JSON.parse(rawMessage);
+    } catch {
+      throw new Error('Invalid OCPP JSON');
     }
-
-    const [messageTypeId, messageId, actionOrPayload, payload] =
+    if (!Array.isArray(message)) throw new Error('Invalid OCPP message');
+    const [messageTypeId, messageId, actionOrPayload, payload, details] =
       message as unknown[];
-    if (typeof messageId !== 'string') {
+    if (
+      typeof messageId !== 'string' ||
+      messageId.length === 0 ||
+      messageId.length > 36
+    ) {
       throw new Error('Invalid OCPP message ID');
     }
-
-    if (messageTypeId === 2) {
+    const malformed = () => {
+      if (messageTypeId === OcppMessageType.Call) {
+        socket.send(
+          JSON.stringify([
+            4,
+            messageId,
+            'FormationViolation',
+            'Invalid CALL envelope',
+            {},
+          ]),
+        );
+      } else {
+        this.pendingRequestService.reject(
+          messageId,
+          socket,
+          new BadGatewayException('Invalid OCPP response envelope'),
+        );
+      }
+    };
+    if (messageTypeId === OcppMessageType.Call) {
+      if (
+        message.length !== 4 ||
+        typeof actionOrPayload !== 'string' ||
+        !isObject(payload)
+      ) {
+        malformed();
+        return;
+      }
       const action = actionOrPayload;
+      if (!isOcppAction(action) || !incomingActions.has(action)) {
+        socket.send(
+          JSON.stringify([
+            4,
+            messageId,
+            'NotImplemented',
+            'Unsupported action',
+            {},
+          ]),
+        );
+        return;
+      }
+      const validationError = validatePayload(action, 'request', payload);
+      if (validationError) {
+        socket.send(
+          JSON.stringify([
+            4,
+            messageId,
+            'FormationViolation',
+            'Payload does not match action schema',
+            {},
+          ]),
+        );
+        console.warn(
+          `${chargePointId} invalid ${action}, message ${messageId}: ${validationError}`,
+        );
+        return;
+      }
       switch (action) {
         case 'BootNotification':
           {
@@ -166,7 +250,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               status: 'Accepted',
             };
 
-            this.sendCallResult(socket, messageId, response);
+            this.sendCallResult(socket, messageId, response, action);
             console.log('BootNotification accepted');
           }
           break;
@@ -177,7 +261,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
             const response: HeartBeatResponse = {
               currentTime: new Date().toISOString(),
             };
-            this.sendCallResult(socket, messageId, response);
+            this.sendCallResult(socket, messageId, response, action);
 
             console.log('Heartbeat responded');
           }
@@ -196,7 +280,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               updatedAt: new Date(),
             });
 
-            this.sendCallResult(socket, messageId, {});
+            this.sendCallResult(socket, messageId, {}, action);
           }
           break;
         case 'Authorize':
@@ -209,7 +293,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
                 status: 'Accepted',
               },
             };
-            this.sendCallResult(socket, messageId, response);
+            this.sendCallResult(socket, messageId, response, action);
           }
           break;
         case 'StartTransaction':
@@ -236,7 +320,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
                 },
               };
 
-              this.sendCallResult(socket, messageId, response);
+              this.sendCallResult(socket, messageId, response, action);
             } catch (error) {
               if (error instanceof ActiveSessionConflictError) {
                 console.warn(
@@ -280,14 +364,14 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
               );
             }
 
-            this.sendCallResult(socket, messageId, {});
+            this.sendCallResult(socket, messageId, {}, action);
           }
           break;
         case 'MeterValues': {
           const request = payload as MeterValuesRequest;
           this.chargeStateService.updateMeterValues(chargePointId, request);
 
-          this.sendCallResult<'MeterValues'>(socket, messageId, {});
+          this.sendCallResult(socket, messageId, {}, action);
 
           break;
         }
@@ -295,10 +379,17 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    if (
-      messageTypeId === OcppMessageType.CallError &&
-      typeof messageId === 'string'
-    ) {
+    if (messageTypeId === OcppMessageType.CallError) {
+      if (
+        message.length !== 5 ||
+        typeof actionOrPayload !== 'string' ||
+        !errorCodes.has(actionOrPayload) ||
+        typeof payload !== 'string' ||
+        !isObject(details)
+      ) {
+        malformed();
+        return;
+      }
       this.pendingRequestService.reject(
         messageId,
         socket,
@@ -312,11 +403,16 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (messageTypeId === 3) {
+      if (message.length !== 3 || !isObject(actionOrPayload)) {
+        malformed();
+        return;
+      }
       const payload = actionOrPayload;
 
       this.handleCallResult(socket, messageId, payload);
       return;
     }
+    throw new Error('Unsupported OCPP message type');
   }
 
   onModuleInit() {

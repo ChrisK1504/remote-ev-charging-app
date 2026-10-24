@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { WebSocket } from 'ws';
+import { OcppActionMap } from './ocpp.types';
 
 interface PendingRequest {
   resolve: (payload: unknown) => void;
   reject: (error: Error) => void;
   socket: WebSocket;
+  action: keyof OcppActionMap;
 }
 
 @Injectable()
@@ -15,13 +17,14 @@ export class PendingRequestService {
   register(
     messageId: string,
     socket: WebSocket,
-    action: string,
+    action: keyof OcppActionMap,
   ): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
       this.pendingRequests.set(messageId, {
         resolve,
         reject,
         socket,
+        action,
       });
 
       setTimeout(() => {
@@ -32,6 +35,14 @@ export class PendingRequestService {
         pending.reject(new Error(`${action} timed out`));
       }, 10000);
     });
+  }
+
+  getAction(
+    messageId: string,
+    socket: WebSocket,
+  ): keyof OcppActionMap | undefined {
+    const pending = this.pendingRequests.get(messageId);
+    return pending?.socket === socket ? pending.action : undefined;
   }
 
   // resolve a successful response
