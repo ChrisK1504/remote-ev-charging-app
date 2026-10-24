@@ -9,6 +9,7 @@ import {
 } from '../session/session.service';
 import { BadGatewayException } from '@nestjs/common';
 import { PendingRequestService } from './pending-request.service';
+import { Connection } from 'pg';
 
 describe('StopTransaction', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {

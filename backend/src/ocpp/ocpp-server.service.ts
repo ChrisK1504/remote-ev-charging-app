@@ -344,6 +344,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
           this.connectionManagerService.remove(chargePointId);
           this.chargeStateService.disconnect(chargePointId);
         }
+        this.pendingRequestService.rejectForSocket(
+          socket,
+          new Error('Socket Disconnected'),
+        );
       });
 
       socket.on('error', (error) => {

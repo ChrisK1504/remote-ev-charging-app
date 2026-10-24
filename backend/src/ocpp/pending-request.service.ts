@@ -7,6 +7,7 @@ interface PendingRequest {
   reject: (error: Error) => void;
   socket: WebSocket;
   action: keyof OcppActionMap;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 @Injectable()
@@ -20,20 +21,20 @@ export class PendingRequestService {
     action: keyof OcppActionMap,
   ): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
-      this.pendingRequests.set(messageId, {
-        resolve,
-        reject,
-        socket,
-        action,
-      });
-
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const pending = this.pendingRequests.get(messageId);
         if (!pending) return;
 
         this.pendingRequests.delete(messageId);
         pending.reject(new Error(`${action} timed out`));
       }, 10000);
+      this.pendingRequests.set(messageId, {
+        resolve,
+        reject,
+        socket,
+        action,
+        timer,
+      });
     });
   }
 
@@ -54,6 +55,7 @@ export class PendingRequestService {
       return;
     }
 
+    clearTimeout(pending.timer);
     this.pendingRequests.delete(messageId);
     pending.resolve(payload);
   }
@@ -63,7 +65,19 @@ export class PendingRequestService {
     const pending = this.pendingRequests.get(messageId);
     if (!pending || pending.socket !== socket) return;
 
+    clearTimeout(pending.timer);
     this.pendingRequests.delete(messageId);
     pending.reject(error);
+  }
+
+  // reject all pending requests of a socket in case of a socket close
+  rejectForSocket(socket: WebSocket, error: Error): void {
+    for (const [messageId, pending] of this.pendingRequests.entries()) {
+      if (pending.socket === socket) {
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(messageId);
+        pending.reject(error);
+      }
+    }
   }
 }

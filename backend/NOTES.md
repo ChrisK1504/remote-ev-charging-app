@@ -1,5 +1,11 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-24 — Pending-request cleanup regression coverage
+
+- Replaced the unfinished server-test sketch with five focused PendingRequestService lifecycle tests: disconnect rejects multiple requests on one socket while preserving another; resolution before disconnect and explicit rejection clear timers; foreign-socket responses/cleanup preserve the original timeout; late responses and repeated cleanup preserve the disconnect rejection.
+- Verified: 225 tests across nine suites pass; backend TypeScript --noEmit passes. Tests use fake timers and socket identity doubles; they do not exercise the WebSocket close-event wiring or real hardware.
+- Production cleanup was implemented by the developer; this increment changes tests and notes only. Review the close-event wiring separately before declaring the full disconnect task complete. Commit the bounded cleanup increment after that review and verification.
+
 ## 2026-10-24 — Extracted inbound CALL handlers and dispatch cleanup
 
 - Moved all seven inbound action implementations into OcppCallHandlersService (ocpp-call-handlers.service.ts), registered in OcppModule. Named handlers accept charger identity and typed requests and return response payloads; they have no sockets, message IDs, or send operations. Its small exhaustive switch uses IncomingOcppCall, a discriminated union preserving each action's request type.
