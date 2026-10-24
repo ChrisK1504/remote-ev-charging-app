@@ -6,6 +6,7 @@ import {
   ActiveSessionConflictError,
   SessionService,
 } from '../session/session.service';
+import { BadGatewayException } from '@nestjs/common';
 
 describe('StopTransaction', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
@@ -453,5 +454,39 @@ describe('Outbound command correlation', () => {
     expect(onAResolved).toHaveBeenCalledWith({
       status: 'Accepted',
     });
+  });
+
+  it('rejects with CALLERROR', async () => {
+    const send = jest.fn();
+    const socket = { send, readyState: WebSocket.OPEN } as unknown as WebSocket;
+
+    const connections = new ConnectionManagerService();
+    connections.add('CP_A', socket);
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      connections,
+      {} as SessionService,
+    );
+
+    const command = service.remoteStartTransaction('CP_A', {
+      idTag: 'TEST',
+      connectorId: 1,
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const startMessage = JSON.parse(send.mock.calls[0][0] as string);
+    const messageId = startMessage[1] as string;
+
+    const rejection =
+      expect(command).rejects.toBeInstanceOf(BadGatewayException);
+
+    await service['handleMessage'](
+      'CP_A',
+      socket,
+      JSON.stringify([4, messageId, 'InternalError', 'Device failed', {}]),
+    );
+    await rejection;
   });
 });

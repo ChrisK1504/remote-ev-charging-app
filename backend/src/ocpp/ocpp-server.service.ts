@@ -100,7 +100,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     );
 
     return new Promise<OcppActionMap[A]['response']>((resolve, reject) => {
-      this.pendingRequests.set(messageId, {
+      this.pendingRequests.set(messageId, { // registers a waiting request
         resolve: (payload: unknown): void => {
           resolve(payload as OcppActionMap[A]['response']);
         },
@@ -110,12 +110,13 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       socket.send(JSON.stringify(message));
 
       setTimeout(() => {
+        // Expire a time-out request
         const pending = this.pendingRequests.get(messageId);
 
         if (!pending) {
           return;
         }
-        this.pendingRequests.delete(messageId);
+        this.pendingRequests.delete(messageId); 
 
         reject(new Error(`${action} timed out`));
       }, 10000);
@@ -144,6 +145,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    // resolve a successful response
     this.pendingRequests.delete(messageId);
     pending.resolve(payload);
   }
@@ -316,6 +318,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       messageTypeId === OcppMessageType.CallError &&
       typeof messageId === 'string'
     ) {
+      // Reject an error response
       const pending = this.pendingRequests.get(messageId);
       if (pending?.socket === socket) {
         this.pendingRequests.delete(messageId);
