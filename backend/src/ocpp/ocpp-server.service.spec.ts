@@ -7,6 +7,7 @@ import {
   SessionService,
 } from '../session/session.service';
 import { BadGatewayException } from '@nestjs/common';
+import { PendingRequestService } from './pending-request.service';
 
 describe('StopTransaction', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
@@ -20,6 +21,7 @@ describe('StopTransaction', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessions,
+      new PendingRequestService(),
     );
 
     const sendB = jest.fn();
@@ -60,6 +62,7 @@ describe('StopTransaction', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessions,
+      new PendingRequestService(),
     );
 
     const send = jest.fn();
@@ -93,6 +96,7 @@ describe('StopTransaction', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessions,
+      new PendingRequestService(),
     );
 
     const send = jest.fn();
@@ -131,6 +135,7 @@ describe('StopTransaction', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessions,
+      new PendingRequestService(),
     );
 
     const send = jest.fn();
@@ -190,6 +195,7 @@ describe('StartTransaction case', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessions,
+      new PendingRequestService(),
     );
 
     const handling = service['handleMessage'](
@@ -246,6 +252,7 @@ describe('StartTransaction case', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessions,
+      new PendingRequestService(),
     );
 
     await expect(
@@ -282,6 +289,7 @@ describe('StartTransaction case', () => {
       new ChargeStateService(),
       new ConnectionManagerService(),
       sessionService,
+      new PendingRequestService(),
     );
 
     await expect(
@@ -346,6 +354,7 @@ describe('Outbound command correlation', () => {
       new ChargeStateService(),
       connections,
       sessions,
+      new PendingRequestService(),
     );
 
     const command = service.remoteStartTransaction('CP_A', {
@@ -405,6 +414,7 @@ describe('Outbound command correlation', () => {
       new ChargeStateService(),
       connections,
       {} as SessionService,
+      new PendingRequestService(),
     );
 
     const startACommand = service.remoteStartTransaction('CP_A', {
@@ -467,6 +477,7 @@ describe('Outbound command correlation', () => {
       new ChargeStateService(),
       connections,
       {} as SessionService,
+      new PendingRequestService(),
     );
 
     const command = service.remoteStartTransaction('CP_A', {
@@ -487,6 +498,35 @@ describe('Outbound command correlation', () => {
       socket,
       JSON.stringify([4, messageId, 'InternalError', 'Device failed', {}]),
     );
+    await rejection;
+  });
+  it('times out', async () => {
+    const send = jest.fn();
+    const socket = { send, readyState: WebSocket.OPEN } as unknown as WebSocket;
+
+    const connections = new ConnectionManagerService();
+    connections.add('CP_A', socket);
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      connections,
+      {} as SessionService,
+      new PendingRequestService(),
+    );
+
+    const command = service.remoteStartTransaction('CP_A', {
+      idTag: 'TEST',
+      connectorId: 1,
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const rejection = expect(command).rejects.toThrow(
+      'RemoteStartTransaction timed out',
+    );
+
+    jest.advanceTimersByTime(10_000);
+
     await rejection;
   });
 });

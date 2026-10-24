@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-24 — Outbound pending-request extraction
+
+- Extracted the pending-request map, Promise registration, ten-second timeout, and socket-scoped resolution/rejection into PendingRequestService, registered in OcppModule. OcppServerService retains socket lookup, message construction/sending, and CALLERROR-to-BadGatewayException translation.
+- Regression coverage exercises wrong-socket responses, reverse-order responses on one socket, CALLERROR rejection, and timeout rejection. Tests construct the real PendingRequestService. Assistant verified 62 tests across six suites, backend TypeScript --noEmit, and git diff --check.
+- Synchronous send exceptions now reject through the new service and remove the pending entry; this cleanup differs from the old implementation and lacks a dedicated regression. Asynchronous send callback errors remain unhandled. Timers remain scheduled after settlement; disconnect/shutdown cleanup and runtime payload validation are deferred.
+- Concepts practiced: Promise creation versus awaiting, message identity versus station/connector identity, dependency injection, and preserving observable behavior during extraction. Be able to explain why registration precedes sending and why both message ID and socket must match.
+- Commit checkpoint: review and commit this bounded extraction on refactor/ocpp-service; keep the branch open. Next increment should target pending-request lifecycle cleanup with failure-focused regression coverage.
+
 ## 2026-10-23 — Session ownership integration evidence and merge checkpoint
 
 - Assistant-verified automated baseline in this session: 58 tests across six suites pass under Node 24.21.0; backend TypeScript --noEmit and working-tree git diff --check pass. The different-owner and null-owner stop regressions now exist and assert HTTP 403 with zero remote-stop calls, superseding the missing-test checkpoint below. These checks preceded the current developer edits to scripts/seed-user.ts; those edits have not been reviewed or reverified here.

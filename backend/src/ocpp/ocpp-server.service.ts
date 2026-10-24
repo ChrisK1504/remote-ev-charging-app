@@ -31,22 +31,17 @@ import {
   ActiveSessionConflictError,
   SessionService,
 } from '../session/session.service';
-
-interface PendingRequest {
-  resolve: (payload: unknown) => void;
-  reject: (error: Error) => void;
-  socket: WebSocket;
-}
+import { PendingRequestService } from './pending-request.service';
 
 @Injectable()
 export class OcppServerService implements OnModuleInit, OnModuleDestroy {
   private wss!: WebSocketServer;
-  private readonly pendingRequests = new Map<string, PendingRequest>();
 
   constructor(
     private readonly chargeStateService: ChargeStateService,
     private readonly connectionManagerService: ConnectionManagerService,
     private readonly sessionService: SessionService,
+    private readonly pendingRequestService: PendingRequestService,
   ) {}
 
   async getActiveSession(chargePointId: string, connectorId: number) {
@@ -99,28 +94,23 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       JSON.stringify(message),
     );
 
-    return new Promise<OcppActionMap[A]['response']>((resolve, reject) => {
-      this.pendingRequests.set(messageId, { // registers a waiting request
-        resolve: (payload: unknown): void => {
-          resolve(payload as OcppActionMap[A]['response']);
-        },
-        reject,
-        socket,
-      });
+    const response = this.pendingRequestService.register(
+      messageId,
+      socket,
+      action,
+    );
+
+    try {
       socket.send(JSON.stringify(message));
+    } catch (error) {
+      this.pendingRequestService.reject(
+        messageId,
+        socket,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
 
-      setTimeout(() => {
-        // Expire a time-out request
-        const pending = this.pendingRequests.get(messageId);
-
-        if (!pending) {
-          return;
-        }
-        this.pendingRequests.delete(messageId); 
-
-        reject(new Error(`${action} timed out`));
-      }, 10000);
-    });
+    return response as Promise<OcppActionMap[A]['response']>;
   }
 
   private sendCallResult<A extends keyof OcppActionMap>(
@@ -138,16 +128,7 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     messageId: string,
     payload: unknown,
   ): void {
-    const pending = this.pendingRequests.get(messageId);
-
-    if (!pending || pending.socket !== socket) {
-      console.warn(`No pending requests for ${messageId}`);
-      return;
-    }
-
-    // resolve a successful response
-    this.pendingRequests.delete(messageId);
-    pending.resolve(payload);
+    this.pendingRequestService.resolve(messageId, socket, payload);
   }
 
   private async handleMessage(
@@ -318,18 +299,15 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       messageTypeId === OcppMessageType.CallError &&
       typeof messageId === 'string'
     ) {
-      // Reject an error response
-      const pending = this.pendingRequests.get(messageId);
-      if (pending?.socket === socket) {
-        this.pendingRequests.delete(messageId);
-        pending.reject(
-          new BadGatewayException({
-            message: 'Charger returned an OCPP error',
-            errorCode: actionOrPayload,
-            description: payload,
-          }),
-        );
-      }
+      this.pendingRequestService.reject(
+        messageId,
+        socket,
+        new BadGatewayException({
+          message: 'Charger returned an OCPP error',
+          errorCode: actionOrPayload,
+          description: payload,
+        }),
+      );
       return;
     }
 
