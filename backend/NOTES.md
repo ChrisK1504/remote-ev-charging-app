@@ -1,5 +1,15 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-24 — Typed OCPP envelopes
+
+- Source: developer-provided OCPP excerpt, sections 4.1.3–4.2.3. The third message is CALLERROR (4). Added OcppCallMessage, defaulted OcppCallResult, OcppCallError, and their discriminated union OcppMessage; preserved action-specific OcppCall typing for outbound requests. Named tuple fields make the wire order visible.
+- Added isOcppCall/isOcppCallResult/isOcppCallError runtime type guards in ocpp-message.ts. They check exact tuple lengths, discriminators, string IDs of at most 36 Unicode characters, action/description types, payload shapes, and the allowed error-code set. CALL/CALLRESULT envelopes permit null per the supplied excerpt; action schema validation still rejects null for current actions. ErrorDetails must be an object, including {} when empty.
+- Centralized error codes with the excerpt's exact wire spelling OccurenceConstraintViolation, correcting the prior Occurrence spelling. The supplied ID rule specifies no minimum length, so the envelope guard does not invent one. Unknown message type numbers are now ignored before inspecting their payload, as required by section 4.1.3.
+- OcppServerService narrows incoming frames through the guards before dispatch. Outbound CALLRESULT and CALLERROR arrays now have explicit types; error construction is centralized in sendCallError. Payload validation and socket-scoped response correlation remain separate checks. A valid envelope does not prove a valid payload or a matching outstanding request.
+- Verified under Node 24.21.0: 216 tests across eight suites pass; TypeScript --noEmit passes. Added six focused envelope tests and one service-level unknown-type regression; replaced one old unknown-type rejection case. No hardware or live WebSocket verification was performed.
+- Limits: this increment does not track inbound CALL ID reuse across a connection or add replay/idempotency policy. Existing invalid-ID handling still logs/throws rather than sending a response with an invalid correlation ID. Timer/disconnect lifecycle work remains deferred.
+- Review path: read the tuple definitions, then the three guards, then the dispatch in handleMessage. Explain why a valid CALLRESULT envelope cannot establish its action or the success of physical charging. Commit this bounded refactor after review; no merge was performed.
+
 ## 2026-10-24 — OCPP runtime validation
 
 - Added local JSON Schema definitions for request/response payloads of all nine actions in OcppActionMap, transcribed from https://ocpp.md/ocpp-1.6j/schemas/core/ (OCPP 1.6J edition 2 Core reference). They are maintained definitions, not downloaded official schema artifacts; direct schema download was denied. Review against the company's chosen OCA schema release remains desirable before claiming conformance.

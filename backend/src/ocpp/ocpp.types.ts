@@ -4,6 +4,16 @@ export enum OcppMessageType {
   CallError = 4,
 }
 
+// Envelope types describe framing only; action payloads need separate validation.
+export type OcppPayload = Record<string, unknown> | null;
+export type OcppCallMessage = [
+  messageType: OcppMessageType.Call,
+  messageId: string,
+  action: string,
+  payload: OcppPayload,
+];
+
+// Preserve action-specific typing for calls constructed by this backend.
 export type OcppCall<A extends keyof OcppActionMap> = [
   OcppMessageType.Call,
   string,
@@ -11,7 +21,34 @@ export type OcppCall<A extends keyof OcppActionMap> = [
   OcppActionMap[A]['request'],
 ];
 
-export type OcppCallResult<T> = [OcppMessageType.CallResult, string, T];
+export type OcppCallResult<T = OcppPayload> = [
+  messageType: OcppMessageType.CallResult,
+  messageId: string,
+  payload: T,
+];
+
+export const OCPP_ERROR_CODES = [
+  'NotImplemented',
+  'NotSupported',
+  'InternalError',
+  'ProtocolError',
+  'SecurityError',
+  'FormationViolation',
+  'PropertyConstraintViolation',
+  'OccurenceConstraintViolation',
+  'TypeConstraintViolation',
+  'GenericError',
+] as const;
+export type OcppErrorCode = (typeof OCPP_ERROR_CODES)[number];
+
+export type OcppCallError = [
+  messageType: OcppMessageType.CallError,
+  messageId: string,
+  errorCode: OcppErrorCode,
+  errorDescription: string,
+  errorDetails: Record<string, unknown>,
+];
+export type OcppMessage = OcppCallMessage | OcppCallResult | OcppCallError;
 
 export interface ConnectorState {
   connectorId: number;

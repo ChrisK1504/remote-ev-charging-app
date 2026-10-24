@@ -334,20 +334,3 @@ export const incomingActions = new Set<string>([
   'StopTransaction',
   'MeterValues',
 ]);
-
-export const errorCodes = new Set<string>([
-  'NotImplemented',
-  'NotSupported',
-  'InternalError',
-  'ProtocolError',
-  'SecurityError',
-  'FormationViolation',
-  'PropertyConstraintViolation',
-  'OccurrenceConstraintViolation',
-  'TypeConstraintViolation',
-  'GenericError',
-]);
-
-export function isObject(value: unknown): boolean {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}

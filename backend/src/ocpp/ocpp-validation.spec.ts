@@ -188,16 +188,26 @@ describe('OCPP validation boundary', () => {
       {},
     ]);
   });
-  it.each(['{', '{}', '[9,"id",{}]', '[2,"", "Heartbeat",{}]'])(
-    'rejects unprocessable frame %s',
-    async (raw) => {
-      const { service, socket, send } = setup();
-      await expect(
-        service['handleMessage']('CP', socket, raw),
-      ).rejects.toThrow();
-      expect(send).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    '{',
+    '{}',
+    '[2,"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "Heartbeat",{}]',
+  ])('rejects unprocessable frame %s', async (raw) => {
+    const { service, socket, send } = setup();
+    await expect(service['handleMessage']('CP', socket, raw)).rejects.toThrow();
+    expect(send).not.toHaveBeenCalled();
+  });
+  it('ignores unknown message types without inspecting their payload', async () => {
+    const { service, socket, send, states, sessions } = setup();
+    await service['handleMessage'](
+      'CP',
+      socket,
+      JSON.stringify([9, null, 'bad payload']),
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(states.get('CP')?.connectors.size).toBe(0);
+    expect(sessions.start).not.toHaveBeenCalled();
+  });
   it('responds to unsupported actions', async () => {
     const { service, socket, send } = setup();
     await service['handleMessage'](
