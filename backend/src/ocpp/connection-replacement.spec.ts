@@ -43,17 +43,50 @@ it('preserves the new connection when the old socket closes', () => {
     readyState: WebSocket.OPEN,
   });
 
-  // Register the server's connection listener.
   service.onModuleInit();
 
-  // Run that listener twice, as if two connections arrived.
   server.emit('connection', socketA, { url: '/ocpp/CP_A' });
   server.emit('connection', socketB, { url: '/ocpp/CP_A' });
 
   expect(socketA.close).toHaveBeenCalledTimes(1);
   expect(connections.get('CP_A')).toBe(socketB);
 
-  // Now run A's close listener.
+  socketB.emit(
+    'message',
+    Buffer.from(
+      JSON.stringify([
+        2,
+        'status-b',
+        'StatusNotification',
+        {
+          connectorId: 1,
+          status: 'Charging',
+          errorCode: 'NoError',
+        },
+      ]),
+    ),
+  );
+
+  const socketState = state.get('CP_A')?.connectors.get(1)?.status;
+  expect(socketState).toEqual('Charging');
+
+  socketA.emit(
+    'message',
+    Buffer.from(
+      JSON.stringify([
+        2,
+        'status-a',
+        'StatusNotification',
+        {
+          connectorId: 1,
+          status: 'Available',
+          errorCode: 'NoError',
+        },
+      ]),
+    ),
+  );
+  expect(state.get('CP_A')?.connectors.get(1)?.status).toBe('Charging');
+
   socketA.emit('close');
 
   expect(connections.get('CP_A')).toBe(socketB);

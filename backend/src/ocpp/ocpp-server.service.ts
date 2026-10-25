@@ -324,6 +324,10 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
       console.log('Protocol:', socket.protocol);
 
       socket.on('message', (data) => {
+        const correctSocket = this.connectionManagerService.get(chargePointId);
+        if (correctSocket !== socket) {
+          return;
+        }
         const buffer = Array.isArray(data)
           ? Buffer.concat(data)
           : Buffer.isBuffer(data)
