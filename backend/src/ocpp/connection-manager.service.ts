@@ -6,7 +6,12 @@ export class ConnectionManagerService {
   private readonly connections = new Map<string, WebSocket>();
 
   add(chargePointId: string, socket: WebSocket): void {
+    const oldConnection = this.get(chargePointId);
+
     this.connections.set(chargePointId, socket);
+    if (oldConnection) {
+      oldConnection.close();
+    }
   }
 
   remove(chargePointId: string): void {
