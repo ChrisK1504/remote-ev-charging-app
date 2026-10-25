@@ -1,5 +1,15 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-25 — Charger connection replacement
+
+- ConnectionManagerService registers the replacement socket before asking the previous socket for the same charge point ID to close. Socket identity remains scoped to the charge point; connectors share that connection.
+- OcppServerService checks the current registered socket before parsing incoming messages. Messages arriving through a replaced socket are ignored. The existing close-handler identity check preserves the replacement connection and its connected state when the old socket closes.
+- Regression coverage uses EventEmitter socket doubles and a mocked WebSocketServer constructor to exercise the actual connection/message/close callbacks without opening a network port. It verifies replacement closes A, B can report Charging, A cannot overwrite the same connector with Available, and A's later close leaves B registered and connected. The old-socket message now correctly uses CALL type 2; type 1 would have been ignored independently and produced misleading passing evidence.
+- Assistant verified under Node 24.21.0: 227 tests across ten suites pass; backend TypeScript --noEmit passes. The assistant did not independently rerun the test with the socket guard removed. No live network, PostgreSQL, or hardware verification was performed.
+- Limits: closing a socket is asynchronous. The guard prevents newly arriving messages from entering processing; it does not cancel handlers or database work already in progress. Pending requests stay attached to their original socket and are rejected by its close handler, not transferred or automatically resent. Replacement is not charger authentication or transaction reconciliation.
+- Concepts practiced: replacing a Map entry versus closing a connection; socket identity versus connector identity; checking current state rather than an earlier string snapshot; constructing a regression test whose valid input reaches the behavior under test.
+- Commit checkpoint: commit the message guard, corrected regression, and this note on fix/connection-replacement after review. No commit or merge was performed by the assistant. Next recommended investigation: reproduce a repeated StartTransaction after a lost acknowledgment, distinguish an active-session uniqueness constraint from replay safety, and agree on duplicate-request identity before changing persistence.
+
 ## 2026-10-24 — Pending-request cleanup regression coverage
 
 - Replaced the unfinished server-test sketch with five focused PendingRequestService lifecycle tests: disconnect rejects multiple requests on one socket while preserving another; resolution before disconnect and explicit rejection clear timers; foreign-socket responses/cleanup preserve the original timeout; late responses and repeated cleanup preserve the disconnect rejection.

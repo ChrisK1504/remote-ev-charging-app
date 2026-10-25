@@ -9,7 +9,6 @@ import {
 } from '../session/session.service';
 import { BadGatewayException } from '@nestjs/common';
 import { PendingRequestService } from './pending-request.service';
-import { Connection } from 'pg';
 
 describe('StopTransaction', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
@@ -603,4 +602,36 @@ describe('Extracted OCPP call handlers', () => {
       }
     },
   );
+});
+
+describe('Socket behaviour', () => {
+  it('closes an old socket connection when a new one comes from the same charging point', () => {
+    const socketA = {
+      send: jest.fn(),
+      close: jest.fn(),
+      readyState: WebSocket.OPEN,
+    } as unknown as WebSocket;
+    const socketB = {
+      send: jest.fn(),
+      readyState: WebSocket.OPEN,
+    } as unknown as WebSocket;
+
+    const connections = new ConnectionManagerService();
+    connections.add('CP_A', socketA);
+    connections.add('CP_A', socketB);
+
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      connections,
+      {} as unknown as SessionService,
+      new PendingRequestService(),
+      new OcppCallHandlersService(
+        new ChargeStateService(),
+        {} as unknown as SessionService,
+      ),
+    );
+
+    expect(connections.get('CP_A')).toEqual(socketB);
+    expect(socketA.close).toHaveBeenCalledTimes(1);
+  });
 });
