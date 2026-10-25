@@ -1,3 +1,4 @@
+import { UserService } from '../users/user.service';
 import { OcppCallHandlersService } from './ocpp-call-handlers.service';
 import { payloadSchemas, validatePayload } from './ocpp-validation';
 import { OcppActionMap } from './ocpp.types';
@@ -147,6 +148,7 @@ describe('OCPP validation boundary', () => {
       new OcppCallHandlersService(
         states,
         sessions as unknown as SessionService,
+        { findByIdTag: jest.fn() } as unknown as UserService,
       ),
     );
     return { service, states, sessions, send, socket };

@@ -19,12 +19,14 @@ import {
   StopTransactionRequest,
   StopTransactionResponse,
 } from './ocpp.types';
+import { UserService } from '../users/user.service';
 
 @Injectable()
 export class OcppCallHandlersService {
   constructor(
     private readonly chargeStateService: ChargeStateService,
     private readonly sessionService: SessionService,
+    private readonly userService: UserService,
   ) {}
 
   // Only validated calls reach this dispatcher. No handler owns a socket or sends replies.
@@ -91,12 +93,16 @@ export class OcppCallHandlersService {
     return {};
   }
 
-  private authorize(
+  private async authorize(
     chargePointId: string,
     request: AuthorizeRequest,
-  ): AuthorizeResponse {
+  ): Promise<AuthorizeResponse> {
     console.log(`${chargePointId} Authorize: ${request.idTag}`);
-    return { idTagInfo: { status: 'Accepted' } };
+    const authorizedUser = await this.userService.findByIdTag(request.idTag);
+    if (authorizedUser) {
+      return { idTagInfo: { status: 'Accepted' } };
+    }
+    return { idTagInfo: { status: 'Invalid' } };
   }
 
   private async startTransaction(

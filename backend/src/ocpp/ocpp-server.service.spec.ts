@@ -9,6 +9,9 @@ import {
 } from '../session/session.service';
 import { BadGatewayException } from '@nestjs/common';
 import { PendingRequestService } from './pending-request.service';
+import { UserService } from '../users/user.service';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
 
 describe('StopTransaction', () => {
   it('passes the sending charger’s identity when completing a transaction', async () => {
@@ -23,7 +26,9 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     const sendB = jest.fn();
@@ -65,7 +70,9 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     const send = jest.fn();
@@ -100,7 +107,9 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     const send = jest.fn();
@@ -140,7 +149,9 @@ describe('StopTransaction', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     const send = jest.fn();
@@ -201,7 +212,9 @@ describe('StartTransaction case', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     const handling = service['handleMessage'](
@@ -259,7 +272,9 @@ describe('StartTransaction case', () => {
       new ConnectionManagerService(),
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     await expect(
@@ -297,7 +312,9 @@ describe('StartTransaction case', () => {
       new ConnectionManagerService(),
       sessionService,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessionService),
+      new OcppCallHandlersService(new ChargeStateService(), sessionService, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     await expect(
@@ -363,7 +380,9 @@ describe('Outbound command correlation', () => {
       connections,
       sessions,
       new PendingRequestService(),
-      new OcppCallHandlersService(new ChargeStateService(), sessions),
+      new OcppCallHandlersService(new ChargeStateService(), sessions, {
+        findByIdTag: jest.fn(),
+      } as unknown as UserService),
     );
 
     const command = service.remoteStartTransaction('CP_A', {
@@ -427,6 +446,7 @@ describe('Outbound command correlation', () => {
       new OcppCallHandlersService(
         new ChargeStateService(),
         {} as SessionService,
+        { findByIdTag: jest.fn() } as unknown as UserService,
       ),
     );
 
@@ -494,6 +514,7 @@ describe('Outbound command correlation', () => {
       new OcppCallHandlersService(
         new ChargeStateService(),
         {} as SessionService,
+        { findByIdTag: jest.fn() } as unknown as UserService,
       ),
     );
 
@@ -532,6 +553,7 @@ describe('Outbound command correlation', () => {
       new OcppCallHandlersService(
         new ChargeStateService(),
         {} as SessionService,
+        { findByIdTag: jest.fn() } as unknown as UserService,
       ),
     );
 
@@ -579,8 +601,15 @@ describe('Extracted OCPP call handlers', () => {
         new ConnectionManagerService(),
         sessions,
         new PendingRequestService(),
-        new OcppCallHandlersService(states, sessions),
+        new OcppCallHandlersService(
+          states,
+          sessions,
+          new UserService({
+            findOne: jest.fn().mockResolvedValue({ userId: 'user-1' }),
+          } as unknown as Repository<User>),
+        ),
       );
+
       await service['handleMessage'](
         'CP',
         socket,
@@ -628,6 +657,7 @@ describe('Socket behaviour', () => {
       new OcppCallHandlersService(
         new ChargeStateService(),
         {} as unknown as SessionService,
+        { findByIdTag: jest.fn() } as unknown as UserService,
       ),
     );
 

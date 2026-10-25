@@ -5,9 +5,10 @@ import { ConnectionManagerService } from './connection-manager.service';
 import { SessionModule } from '../session/session.module';
 import { OcppCallHandlersService } from './ocpp-call-handlers.service';
 import { PendingRequestService } from './pending-request.service';
+import { UserModule } from '../users/user.module';
 
 @Module({
-  imports: [SessionModule],
+  imports: [SessionModule, UserModule],
   providers: [
     OcppServerService,
     ChargeStateService,

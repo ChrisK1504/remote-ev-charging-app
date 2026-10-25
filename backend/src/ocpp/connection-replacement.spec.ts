@@ -1,3 +1,4 @@
+import { UserService } from '../users/user.service';
 import { EventEmitter } from 'node:events';
 import { WebSocket, WebSocketServer } from 'ws';
 import { ChargeStateService } from './charger-state.service';
@@ -28,7 +29,9 @@ it('preserves the new connection when the old socket closes', () => {
     connections,
     sessions,
     new PendingRequestService(),
-    new OcppCallHandlersService(state, sessions),
+    new OcppCallHandlersService(state, sessions, {
+      findByIdTag: jest.fn(),
+    } as unknown as UserService),
   );
 
   const socketA = Object.assign(new EventEmitter(), {

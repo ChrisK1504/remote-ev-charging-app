@@ -1,5 +1,10 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-25 — Authorization test dependency wiring
+
+- Updated existing OCPP test constructors to supply a mocked UserService after the authorization handler gained that dependency. The existing successful Authorize dispatch fixture retains its explicit user repository result.
+- Verified: 230 tests across eleven suites pass; TypeScript --noEmit and git diff --check pass. HTTP tests required execution outside the sandbox to bind temporary local ports. These checks do not verify real PostgreSQL authorization or hardware behavior.
+
 ## 2026-10-25 — Charger connection replacement
 
 - ConnectionManagerService registers the replacement socket before asking the previous socket for the same charge point ID to close. Socket identity remains scoped to the charge point; connectors share that connection.
