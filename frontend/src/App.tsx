@@ -27,16 +27,12 @@ function ChargerControls({ charger }: { charger: Charger }) {
     setBusy(true)
     setMessage('')
     setError('')
-    const path = `/chargers/${encodeURIComponent(charger.id)}`
+    const path = `/chargers/${encodeURIComponent(charger.id)}/connector${encodeURIComponent(connector)}`
     try {
       const result = await request<CommandResponse>(
-        action === 'start' ? `${path}/start` : `${path}/connector/${connector}/stop`,
+        action === 'start' ? `${path}/start` : `${path}/stop`,
         {
           method: 'POST',
-          ...(action === 'start' ? {
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ connectorId: connector }),
-          } : {}),
         },
       )
       setMessage(`${action === 'start' ? 'Start' : 'Stop'} request: ${result.status}.`)
@@ -56,9 +52,6 @@ function ChargerControls({ charger }: { charger: Charger }) {
             Connector{' '}
             <Input type="number" min="1" step="1" required value={connectorId}
               onChange={(event) => setConnectorId(event.target.value)} />
-          </label>
-          <label>
-            ID tag{' '}
           </label>
           <Button type="submit"><Zap size={15} /> Start charging</Button>
           <Button variant="outline" type="button" onClick={() => void send('stop')}>Stop charging</Button>
