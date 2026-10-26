@@ -73,7 +73,9 @@ describe('PendingRequestService lifecycle', () => {
 
     expect(service.getAction('a', socketA)).toBe('RemoteStartTransaction');
     expect(jest.getTimerCount()).toBe(1);
-    const rejected = expect(request).rejects.toThrow('RemoteStartTransaction timed out');
+    const rejected = expect(request).rejects.toThrow(
+      'RemoteStartTransaction timed out',
+    );
     jest.advanceTimersByTime(10_000);
     await rejected;
     expect(service.getAction('a', socketA)).toBeUndefined();

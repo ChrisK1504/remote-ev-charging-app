@@ -1,5 +1,11 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-26 — Asynchronous outbound send-failure regression
+
+- Added a test in ocpp-server.service.spec.ts that captures the WebSocket send callback, invokes it with an error after send returns, and verifies rejection with the original error without advancing time. It also checks removal of the pending action and timeout timer.
+- Verified: all 17 tests in ocpp-server.service.spec.ts pass with the developer's callback-error handling. No live network or hardware was exercised; a before-fix regression run was not performed.
+- TypeScript checking is blocked by syntax errors in the independently edited pending-request.service.spec.ts at line 100 (TS1109). That file was left unchanged. Full-suite verification and the remaining successful-send/isolation cases are still pending; this increment is not ready to commit yet.
+
 ## 2026-10-25 — Authorization test dependency wiring
 
 - Updated existing OCPP test constructors to supply a mocked UserService after the authorization handler gained that dependency. The existing successful Authorize dispatch fixture retains its explicit user repository result.

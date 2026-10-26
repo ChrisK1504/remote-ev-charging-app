@@ -538,6 +538,49 @@ describe('Outbound command correlation', () => {
     );
     await rejection;
   });
+  it('rejects and clears the pending request when the send callback reports an error', async () => {
+    let sendCallback: ((error?: Error) => void) | undefined;
+    const send = jest.fn(
+      (_data: string, callback?: (error?: Error) => void) => {
+        sendCallback = callback;
+      },
+    );
+    const socket = { send, readyState: WebSocket.OPEN } as unknown as WebSocket;
+    const connections = new ConnectionManagerService();
+    connections.add('CP_A', socket);
+    const pendingRequests = new PendingRequestService();
+    const service = new OcppServerService(
+      new ChargeStateService(),
+      connections,
+      {} as SessionService,
+      pendingRequests,
+      new OcppCallHandlersService(
+        new ChargeStateService(),
+        {} as SessionService,
+        { findByIdTag: jest.fn() } as unknown as UserService,
+      ),
+    );
+
+    const command = service.remoteStartTransaction('CP_A', {
+      idTag: 'TEST',
+      connectorId: 1,
+    });
+    const messageId = JSON.parse(send.mock.calls[0][0])[1] as string;
+    expect(pendingRequests.getAction(messageId, socket)).toBe(
+      'RemoteStartTransaction',
+    );
+    expect(jest.getTimerCount()).toBe(1);
+
+    const writeError = new Error('Write failed');
+    const rejection = expect(command).rejects.toBe(writeError);
+    expect(sendCallback).toBeDefined();
+    sendCallback!(writeError);
+    await rejection;
+
+    expect(pendingRequests.getAction(messageId, socket)).toBeUndefined();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('times out', async () => {
     const send = jest.fn();
     const socket = { send, readyState: WebSocket.OPEN } as unknown as WebSocket;

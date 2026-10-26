@@ -104,7 +104,12 @@ export class OcppServerService implements OnModuleInit, OnModuleDestroy {
     );
 
     try {
-      socket.send(JSON.stringify(message));
+      socket.send(JSON.stringify(message), (error) => {
+        if (error) {
+          console.warn('Socket err: ', error);
+          this.pendingRequestService.reject(messageId, socket, error);
+        }
+      });
     } catch (error) {
       this.pendingRequestService.reject(
         messageId,
