@@ -94,6 +94,10 @@ export class ChargerController {
     // We check database if the user still exists before proceeding
     const user = await this.authService.getCurrentUser(currentUserId);
 
+    if (connectorId < 1) {
+      throw new BadRequestException('connectorId must be a positive integer');
+    }
+
     const session = await this.ocppServerService.getActiveSession(
       chargePointId,
       connectorId,

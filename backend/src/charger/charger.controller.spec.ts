@@ -230,6 +230,10 @@ describe('Charger command authentication (HTTP)', () => {
     expect(ocpp.getActiveSession).toHaveBeenCalledWith('CP_001', 1);
     expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
   });
+
+  // TODO Cannot START ANOTHER USERS CHARGING SESSION. NEEDS MORE OWNERSHIP RESTRICTIONS
+  // it('rejects a user from starting another users session', async () => {
+  // });
   it('rejects a user from stopping an unowned session', async () => {
     const client = await login();
 
