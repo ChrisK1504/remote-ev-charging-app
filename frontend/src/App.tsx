@@ -27,7 +27,7 @@ function ChargerControls({ charger }: { charger: Charger }) {
     setBusy(true)
     setMessage('')
     setError('')
-    const path = `/chargers/${encodeURIComponent(charger.id)}/connector${encodeURIComponent(connector)}`
+    const path = `/chargers/${encodeURIComponent(charger.id)}/connector/${encodeURIComponent(connector)}`
     try {
       const result = await request<CommandResponse>(
         action === 'start' ? `${path}/start` : `${path}/stop`,
