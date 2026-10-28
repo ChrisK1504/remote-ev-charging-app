@@ -1,5 +1,18 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-28 — BootNotification persistence contract tests
+
+- Replaced lookup-based BootNotification tests with registerOrUpdate contract coverage: full metadata forwarding, repeated boots accepted through the same operation, delayed persistence preventing early acceptance, and original database errors propagating without Accepted.
+- Supplied the new ChargerService dependency in existing server, validation, and connection-replacement test fixtures. Removed an unused repository-shaped mock from Authorize tests. Production code was not modified by this test increment.
+- Verified under Node 24.21.0: 235 tests across eleven suites pass; TypeScript --noEmit --incremental false and git diff --check pass. HTTP tests required execution outside the sandbox to bind temporary ports.
+- Limits: persistence is mocked. These tests do not establish PostgreSQL upsert concurrency, UUID preservation, or migration compatibility. The Charger entity still maps ocpp_id and charge_point_vendor_name while migration 007 defines connection_id and charge_point_vendor; resolve this mismatch before real database verification or committing the persistence feature.
+
+## 2026-10-28 — Charger entity mapping
+
+- Added Charger in src/charger/charger.entity.ts using migration 007's column names, lengths, nullable metadata, UUID identity, and timestamp default. UUID assignment remains the caller's responsibility, consistent with existing entities.
+- Migration 007 is unchanged and currently contains invalid SQL: ocpp_id UNIQUE varchar(). The entity maps the apparent intent as a unique nullable varchar; enforcing mandatory OCPP identity requires updating both migration and entity nullability.
+- Verified: backend TypeScript --noEmit --incremental false and git diff --check pass. No database migration or persistence operation was executed. Repository registration, BootNotification integration, and ON CONFLICT implementation remain for the developer.
+
 ## 2026-10-26 — Asynchronous outbound send-failure regression
 
 - Added a test in ocpp-server.service.spec.ts that captures the WebSocket send callback, invokes it with an error after send returns, and verifies rejection with the original error without advancing time. It also checks removal of the pending action and timeout timer.

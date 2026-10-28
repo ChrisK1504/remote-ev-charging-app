@@ -1,3 +1,4 @@
+import { ChargerService } from './charger.service';
 import { UserService } from '../users/user.service';
 import { OcppCallHandlersService } from './ocpp-call-handlers.service';
 import { payloadSchemas, validatePayload } from './ocpp-validation';
@@ -149,6 +150,9 @@ describe('OCPP validation boundary', () => {
         states,
         sessions as unknown as SessionService,
         { findByIdTag: jest.fn() } as unknown as UserService,
+        {
+          registerOrUpdate: jest.fn().mockResolvedValue(undefined),
+        } as unknown as ChargerService,
       ),
     );
     return { service, states, sessions, send, socket };
