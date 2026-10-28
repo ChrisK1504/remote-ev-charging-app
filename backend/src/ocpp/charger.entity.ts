@@ -5,14 +5,14 @@ export class Charger {
   @PrimaryColumn({ type: 'uuid' })
   id!: string;
 
-  @Column({ name: 'ocpp_id', type: 'varchar', unique: true })
-  ocppId!: string;
+  @Column({ name: 'connection_id', type: 'varchar', unique: true })
+  connectionId!: string;
 
   @Column({ name: 'charge_point_model', type: 'varchar', length: 20 })
   chargePointModel!: string;
 
-  @Column({ name: 'charge_point_vendor_name', type: 'varchar', length: 20 })
-  chargePointVendorName!: string;
+  @Column({ name: 'charge_point_vendor', type: 'varchar', length: 20 })
+  chargePointVendor!: string;
 
   @Column({
     name: 'charge_point_serial_number',
