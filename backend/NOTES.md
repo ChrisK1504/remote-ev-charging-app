@@ -1,5 +1,12 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-29 — Charger persistence merge checkpoint
+
+- Developer reports applying migration 007 locally, completing the charging lifecycle successfully, and observing the charger row in PostgreSQL. This is developer-provided manual evidence; the assistant did not independently operate the simulator or inspect that application row.
+- Assistant reverified the committed branch: all 237 tests across twelve suites pass with the two PostgreSQL integration tests enabled; TypeScript --noEmit --incremental false and branch diff whitespace checks pass under Node 24.21.0. Integration tests still use temporary tables and rolled-back writes.
+- Developer approved merging charger persistence and proceeding to ocpp-rpc. Local main is an ancestor of this branch, and origin/main is an ancestor of local main after fetching. Use a fast-forward merge and begin the next bounded iteration on codex/ocpp-rpc.
+- Next task: validate an isolated OCPP 1.6 RPCServer/RPCClient BootNotification round trip and shutdown against the selected published ocpp-rpc version before wiring it into NestJS. Preserve existing application handlers, database-before-acknowledgment ordering, HTTP contracts, and ownership rules. Transport error mapping, strict validation, connection replacement, and in-flight request cleanup require explicit parity checks during migration.
+
 ## 2026-10-29 — Repeated-boot metadata stabilization
 
 - ChargerService.registerOrUpdate now updates all supplied BootNotification metadata on connection_id conflict. Omitted optional fields preserve previously stored values, including firmware; UUID, connection identity, creation time, and retirement state are excluded from updates.
