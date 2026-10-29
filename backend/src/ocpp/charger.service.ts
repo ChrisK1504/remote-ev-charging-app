@@ -59,6 +59,20 @@ export class ChargerService {
       meterSerialNumber?: string;
     },
   ) {
+    const updateColumns = ['charge_point_model', 'charge_point_vendor'];
+    const optionalMetadata = {
+      firmware_version: input.firmwareVersion,
+      charge_point_serial_number: input.chargePointSerialNumber,
+      charge_box_serial_number: input.chargeBoxSerialNumber,
+      iccid: input.iccid,
+      imsi: input.imsi,
+      meter_type: input.meterType,
+      meter_serial_number: input.meterSerialNumber,
+    };
+    for (const [column, value] of Object.entries(optionalMetadata)) {
+      if (value !== undefined) updateColumns.push(column);
+    }
+
     await this.chargerRepository
       .createQueryBuilder()
       .insert()
@@ -76,10 +90,7 @@ export class ChargerService {
         meterType: input.meterType,
         meterSerialNumber: input.meterSerialNumber,
       })
-      .orUpdate(
-        ['charge_point_model', 'charge_point_vendor', 'firmware_version'],
-        ['connection_id'],
-      )
+      .orUpdate(updateColumns, ['connection_id'])
       .execute();
   }
 }

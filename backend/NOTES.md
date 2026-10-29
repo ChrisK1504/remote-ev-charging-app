@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-29 — Repeated-boot metadata stabilization
+
+- ChargerService.registerOrUpdate now updates all supplied BootNotification metadata on connection_id conflict. Omitted optional fields preserve previously stored values, including firmware; UUID, connection identity, creation time, and retirement state are excluded from updates.
+- Added opt-in PostgreSQL integration tests using migration 007 in a temporary table inside a rolled-back transaction. They verify all metadata updates, one row per connection identity, stable UUID/creation time, and preservation of omitted fields. backend/README.md documents TEST_DATABASE_URL execution; application tables are not modified by these tests.
+- Verified under Node 24.21.0: 235 existing tests pass; both PostgreSQL integration tests pass separately with TEST_DATABASE_URL configured. Default execution skips those two tests. TypeScript --noEmit --incremental false and git diff --check pass. HTTP tests required execution outside the sandbox to bind temporary ports.
+- Reconnaissance supersedes the earlier mapping warning: Charger and migration 007 now agree on connection_id and charge_point_vendor. Real insert/upsert execution against migration 007 succeeded. The configured local database currently has no public.chargers table; these temporary-table tests do not apply the application migration.
+- Merge checkpoint: commit this bounded fix after review. Applying migration 007 to the application database and verifying a live boot/start/meter/stop/start cycle remain prerequisites for the branch merge. No commit, merge, or ocpp-rpc integration was performed in this increment.
+
 ## 2026-10-28 — BootNotification persistence contract tests
 
 - Replaced lookup-based BootNotification tests with registerOrUpdate contract coverage: full metadata forwarding, repeated boots accepted through the same operation, delayed persistence preventing early acceptance, and original database errors propagating without Accepted.
