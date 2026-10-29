@@ -20,6 +20,7 @@ import {
   StopTransactionResponse,
 } from './ocpp.types';
 import { UserService } from '../users/user.service';
+import { ChargerService } from './charger.service';
 
 @Injectable()
 export class OcppCallHandlersService {
@@ -27,6 +28,7 @@ export class OcppCallHandlersService {
     private readonly chargeStateService: ChargeStateService,
     private readonly sessionService: SessionService,
     private readonly userService: UserService,
+    private readonly chargerService: ChargerService,
   ) {}
 
   // Only validated calls reach this dispatcher. No handler owns a socket or sends replies.
@@ -58,13 +60,16 @@ export class OcppCallHandlersService {
     }
   }
 
-  private bootNotification(
+  private async bootNotification(
     chargePointId: string,
     request: BootNotificationRequest,
-  ): BootNotificationResponse {
+  ): Promise<BootNotificationResponse> {
     console.log(
       `${chargePointId} BootNotification: ${JSON.stringify(request)}`,
     );
+
+    await this.chargerService.registerOrUpdate(chargePointId, { ...request });
+
     return {
       currentTime: new Date().toISOString(),
       interval: 10,

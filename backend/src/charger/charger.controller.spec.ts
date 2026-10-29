@@ -99,13 +99,14 @@ describe('Charger command authentication (HTTP)', () => {
   describe.each([
     {
       name: 'start',
-      path: '/chargers/CP_001/start',
-      body: { connectorId: 1 },
+      path: '/chargers/CP_001/connector/1/start',
+      body: {},
     },
     { name: 'stop', path: '/chargers/CP_001/connector/1/stop', body: {} },
   ])('$name', ({ name, path, body }) => {
     it('rejects requests without a cookie before any user or charger lookup', async () => {
-      await request(app.getHttpServer()).post(path).send(body).expect(401);
+      // await request(app.getHttpServer()).post(path).send(body).expect(401);
+      await request(app.getHttpServer()).post(path).expect(401);
       expect(repository.findOne).not.toHaveBeenCalled();
       expectNoChargerAccess();
     });
@@ -169,8 +170,8 @@ describe('Charger command authentication (HTTP)', () => {
     const client = await login();
 
     await client
-      .post('/chargers/CP_001/start')
-      .send({ connectorId: 1, idTag: 'another-users-tag' })
+      .post('/chargers/CP_001/connector/1/start')
+      .send({ idTag: 'another-users-tag' })
       .expect(200);
 
     expect(ocpp.remoteStartTransaction).toHaveBeenCalledTimes(1);
@@ -186,10 +187,7 @@ describe('Charger command authentication (HTTP)', () => {
       .mockResolvedValueOnce({ id: 'user-1', email: credentials.email })
       .mockResolvedValueOnce(null);
 
-    await client
-      .post('/chargers/CP_001/start')
-      .send({ connectorId: 1 })
-      .expect(401);
+    await client.post('/chargers/CP_001/connector/1/start').expect(401);
 
     expect(repository.findOne).toHaveBeenCalledTimes(2);
     expect(repository.findOne).toHaveBeenNthCalledWith(2, {
@@ -207,10 +205,7 @@ describe('Charger command authentication (HTTP)', () => {
       .mockResolvedValueOnce({ id: 'user-1', email: credentials.email })
       .mockRejectedValueOnce(new Error('Database unavailable'));
 
-    await client
-      .post('/chargers/CP_001/start')
-      .send({ connectorId: 1 })
-      .expect(500);
+    await client.post('/chargers/CP_001/connector/1/start').expect(500);
 
     expect(repository.findOne).toHaveBeenCalledTimes(2);
     expect(repository.findOne).toHaveBeenNthCalledWith(2, {
@@ -235,6 +230,10 @@ describe('Charger command authentication (HTTP)', () => {
     expect(ocpp.getActiveSession).toHaveBeenCalledWith('CP_001', 1);
     expect(ocpp.remoteStopTransaction).not.toHaveBeenCalled();
   });
+
+  // TODO Cannot START ANOTHER USERS CHARGING SESSION. NEEDS MORE OWNERSHIP RESTRICTIONS
+  // it('rejects a user from starting another users session', async () => {
+  // });
   it('rejects a user from stopping an unowned session', async () => {
     const client = await login();
 

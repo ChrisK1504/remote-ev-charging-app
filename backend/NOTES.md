@@ -1,5 +1,33 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-10-29 — Charger persistence merge checkpoint
+
+- Developer reports applying migration 007 locally, completing the charging lifecycle successfully, and observing the charger row in PostgreSQL. This is developer-provided manual evidence; the assistant did not independently operate the simulator or inspect that application row.
+- Assistant reverified the committed branch: all 237 tests across twelve suites pass with the two PostgreSQL integration tests enabled; TypeScript --noEmit --incremental false and branch diff whitespace checks pass under Node 24.21.0. Integration tests still use temporary tables and rolled-back writes.
+- Developer approved merging charger persistence and proceeding to ocpp-rpc. Local main is an ancestor of this branch, and origin/main is an ancestor of local main after fetching. Use a fast-forward merge and begin the next bounded iteration on codex/ocpp-rpc.
+- Next task: validate an isolated OCPP 1.6 RPCServer/RPCClient BootNotification round trip and shutdown against the selected published ocpp-rpc version before wiring it into NestJS. Preserve existing application handlers, database-before-acknowledgment ordering, HTTP contracts, and ownership rules. Transport error mapping, strict validation, connection replacement, and in-flight request cleanup require explicit parity checks during migration.
+
+## 2026-10-29 — Repeated-boot metadata stabilization
+
+- ChargerService.registerOrUpdate now updates all supplied BootNotification metadata on connection_id conflict. Omitted optional fields preserve previously stored values, including firmware; UUID, connection identity, creation time, and retirement state are excluded from updates.
+- Added opt-in PostgreSQL integration tests using migration 007 in a temporary table inside a rolled-back transaction. They verify all metadata updates, one row per connection identity, stable UUID/creation time, and preservation of omitted fields. backend/README.md documents TEST_DATABASE_URL execution; application tables are not modified by these tests.
+- Verified under Node 24.21.0: 235 existing tests pass; both PostgreSQL integration tests pass separately with TEST_DATABASE_URL configured. Default execution skips those two tests. TypeScript --noEmit --incremental false and git diff --check pass. HTTP tests required execution outside the sandbox to bind temporary ports.
+- Reconnaissance supersedes the earlier mapping warning: Charger and migration 007 now agree on connection_id and charge_point_vendor. Real insert/upsert execution against migration 007 succeeded. The configured local database currently has no public.chargers table; these temporary-table tests do not apply the application migration.
+- Merge checkpoint: commit this bounded fix after review. Applying migration 007 to the application database and verifying a live boot/start/meter/stop/start cycle remain prerequisites for the branch merge. No commit, merge, or ocpp-rpc integration was performed in this increment.
+
+## 2026-10-28 — BootNotification persistence contract tests
+
+- Replaced lookup-based BootNotification tests with registerOrUpdate contract coverage: full metadata forwarding, repeated boots accepted through the same operation, delayed persistence preventing early acceptance, and original database errors propagating without Accepted.
+- Supplied the new ChargerService dependency in existing server, validation, and connection-replacement test fixtures. Removed an unused repository-shaped mock from Authorize tests. Production code was not modified by this test increment.
+- Verified under Node 24.21.0: 235 tests across eleven suites pass; TypeScript --noEmit --incremental false and git diff --check pass. HTTP tests required execution outside the sandbox to bind temporary ports.
+- Limits: persistence is mocked. These tests do not establish PostgreSQL upsert concurrency, UUID preservation, or migration compatibility. The Charger entity still maps ocpp_id and charge_point_vendor_name while migration 007 defines connection_id and charge_point_vendor; resolve this mismatch before real database verification or committing the persistence feature.
+
+## 2026-10-28 — Charger entity mapping
+
+- Added Charger in src/charger/charger.entity.ts using migration 007's column names, lengths, nullable metadata, UUID identity, and timestamp default. UUID assignment remains the caller's responsibility, consistent with existing entities.
+- Migration 007 is unchanged and currently contains invalid SQL: ocpp_id UNIQUE varchar(). The entity maps the apparent intent as a unique nullable varchar; enforcing mandatory OCPP identity requires updating both migration and entity nullability.
+- Verified: backend TypeScript --noEmit --incremental false and git diff --check pass. No database migration or persistence operation was executed. Repository registration, BootNotification integration, and ON CONFLICT implementation remain for the developer.
+
 ## 2026-10-26 — Asynchronous outbound send-failure regression
 
 - Added a test in ocpp-server.service.spec.ts that captures the WebSocket send callback, invokes it with an error after send returns, and verifies rejection with the original error without advancing time. It also checks removal of the pending action and timeout timer.

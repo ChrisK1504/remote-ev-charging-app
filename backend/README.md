@@ -69,6 +69,16 @@ $ npm run test:cov
 
 Test commands share the VM-modules flag and disable Watchman discovery so tests do not need a system Watchman service. The existing e2e test is a stale starter expecting `Hello World!` at `/`; it is not evidence of charging-system correctness.
 
+Charger persistence integration tests opt in through `TEST_DATABASE_URL`:
+
+```bash
+TEST_DATABASE_URL='postgresql://user:password@localhost/test_database' npm test -- --runInBand charger.service.integration.spec.ts
+```
+
+They execute migration 007 against a temporary table and roll back each test.
+The database role needs permission to create temporary tables. Without
+`TEST_DATABASE_URL`, these two database tests are skipped.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

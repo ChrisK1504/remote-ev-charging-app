@@ -28,6 +28,7 @@ export class ChargerController {
     private readonly userService: UserService,
   ) {}
 
+  // TODO: A user gets a list of only his owned vehicles.
   @Get()
   list() {
     return this.chargeStateService
@@ -37,18 +38,18 @@ export class ChargerController {
 
   @Get(':id')
   get(@Param('id') id: string) {
-    const charger = this.chargeStateService.get(id);
+    const charger = this.chargeStateService.get(id); // Persist chargeStateService eventually
     if (!charger) {
       throw new NotFoundException(`Unknown charger: ${id}`);
     }
     return this.serialize(charger);
   }
 
-  @Post(':id/start')
+  @Post(':id/connector/:connectorId/start')
   @HttpCode(200)
   async start(
     @Param('id') id: string,
-    @Body() body: unknown,
+    @Param('connectorId', ParseIntPipe) connectorId: number,
     @Req() request: express.Request,
   ) {
     // Check if user is logged-in, session still hasn't expired.
@@ -60,14 +61,7 @@ export class ChargerController {
     const authenticatedUser =
       await this.authService.getCurrentUser(currentUserId);
 
-    const payload = this.requireBody(body);
-
-    if (
-      payload.connectorId !== undefined &&
-      (typeof payload.connectorId !== 'number' ||
-        !Number.isSafeInteger(payload.connectorId) ||
-        payload.connectorId < 1)
-    ) {
+    if (connectorId < 1) {
       throw new BadRequestException('connectorId must be a positive integer');
     }
     this.get(id);
@@ -81,17 +75,15 @@ export class ChargerController {
     }
     return this.ocppServerService.remoteStartTransaction(id, {
       idTag: identity.idTag,
-      ...(payload.connectorId !== undefined
-        ? { connectorId: payload.connectorId }
-        : {}),
+      connectorId,
     });
   }
 
-  @Post(':id/connector/:connector/stop')
+  @Post(':id/connector/:connectorId/stop')
   @HttpCode(200)
   async stop(
     @Param('id') chargePointId: string,
-    @Param('connector', ParseIntPipe) connector: number,
+    @Param('connectorId', ParseIntPipe) connectorId: number,
     @Req() request: express.Request,
   ) {
     // Check if user is logged-in, session still hasn't expired.
@@ -102,9 +94,13 @@ export class ChargerController {
     // We check database if the user still exists before proceeding
     const user = await this.authService.getCurrentUser(currentUserId);
 
+    if (connectorId < 1) {
+      throw new BadRequestException('connectorId must be a positive integer');
+    }
+
     const session = await this.ocppServerService.getActiveSession(
       chargePointId,
-      connector,
+      connectorId,
     );
 
     if (!session) {
@@ -120,13 +116,6 @@ export class ChargerController {
     return this.ocppServerService.remoteStopTransaction(chargePointId, {
       transactionId: session.transactionId,
     });
-  }
-
-  private requireBody(body: unknown): Record<string, unknown> {
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      throw new BadRequestException('A JSON object body is required');
-    }
-    return body as Record<string, unknown>;
   }
 
   private serialize(charger: ChargePointState) {
