@@ -20,7 +20,7 @@ import { OcppRpcServerService } from './ocpp-rpc-server.service';
     PendingRequestService,
     OcppCallHandlersService,
     ChargerService,
-    OcppRpcServerService
+    OcppRpcServerService,
   ],
   exports: [OcppServerService, ChargeStateService],
 })

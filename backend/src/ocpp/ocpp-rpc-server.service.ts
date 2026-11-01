@@ -1,10 +1,14 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ChargerService } from './charger.service';
 import { createRPCError, RPCServer } from 'ocpp-rpc';
+import { UserService } from '../users/user.service';
 
 @Injectable()
 export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
-  constructor(private readonly chargerService: ChargerService) {}
+  constructor(
+    private readonly chargerService: ChargerService,
+    private readonly userService: UserService,
+  ) {}
   private server!: RPCServer;
 
   async onModuleInit() {
@@ -41,6 +45,15 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
         return { currentTime: new Date().toISOString() };
       });
 
+      client.handle('Authorize', async ({ params }) => {
+        console.log(`Server got Authorize from ${client.identity}`, params);
+        const authorizedUser = await this.userService.findByIdTag(params.idTag);
+        if (authorizedUser) {
+          return { idTagInfo: { status: 'Accepted' } };
+        }
+        return { idTagInfo: { status: 'Invalid' } };
+      });
+
       client.handle(({ method, params }) => {
         throw createRPCError('NotImplemented');
       });
@@ -50,6 +63,6 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.server.close({ code: 1 });
+    await this.server.close({ code: 1001, reason: 'Server shutting down' });
   }
 }

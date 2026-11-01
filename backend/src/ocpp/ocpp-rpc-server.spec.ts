@@ -2,6 +2,7 @@ import { RPCServer } from 'ocpp-rpc';
 import { ChargerService } from './charger.service';
 import { OcppRpcServerService } from './ocpp-rpc-server.service';
 import { EventEmitter } from 'stream';
+import { UserService } from '../users/user.service';
 
 jest.mock('ocpp-rpc', () => ({
   ...jest.requireActual('ocpp-rpc'),
@@ -32,9 +33,12 @@ describe('Ocpp-RPC Server Service', () => {
         .mocked(RPCServer)
         .mockImplementation(() => server as unknown as RPCServer);
 
-      const service = new OcppRpcServerService({
-        registerOrUpdate,
-      } as unknown as ChargerService);
+      const service = new OcppRpcServerService(
+        {
+          registerOrUpdate,
+        } as unknown as ChargerService,
+        {} as UserService,
+      );
 
       await service.onModuleInit();
 
@@ -113,7 +117,10 @@ describe('Ocpp-RPC Server Service', () => {
         .mocked(RPCServer)
         .mockImplementation(() => server as unknown as RPCServer);
 
-      const service = new OcppRpcServerService({} as unknown as ChargerService);
+      const service = new OcppRpcServerService(
+        {} as unknown as ChargerService,
+        {} as unknown as UserService,
+      );
 
       await service.onModuleInit();
 
@@ -134,6 +141,92 @@ describe('Ocpp-RPC Server Service', () => {
       expect(heartbeatHandler({ params })).toMatchObject({
         currentTime: expect.any(String),
       });
+    });
+  });
+
+  describe('Authorize', () => {
+    let findByIdTag: jest.Mock;
+    let handle: jest.Mock;
+
+    const params = {
+      idTag: 'TEST',
+    };
+
+    beforeEach(async () => {
+      findByIdTag = jest.fn();
+      handle = jest.fn();
+
+      const server = Object.assign(new EventEmitter(), {
+        auth: jest.fn(),
+        listen: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+
+      jest
+        .mocked(RPCServer)
+        .mockImplementation(() => server as unknown as RPCServer);
+
+      const service = new OcppRpcServerService(
+        {} as ChargerService,
+        { findByIdTag } as unknown as UserService,
+      );
+
+      await service.onModuleInit();
+
+      server.emit('client', {
+        identity: 'CP_TEST',
+        session: { sessionId: 'test' },
+        handle,
+      });
+    });
+
+    it('returns "Accepted" on a valid idTag', async () => {
+      findByIdTag.mockResolvedValue({
+        userId: 'user-1',
+      });
+      const registration = handle.mock.calls.find(
+        ([method]) => method === 'Authorize',
+      );
+      expect(registration).toBeDefined();
+      const authorizeHandler = registration![1];
+
+      await expect(authorizeHandler({ params })).resolves.toMatchObject({
+          idTagInfo: {
+              status: 'Accepted',
+          }
+      });
+
+      expect(findByIdTag).toHaveBeenCalledWith('TEST');
+    });
+      it('returns "Invalid" on a invalid idTag', async () => {
+      findByIdTag.mockResolvedValue(null);
+      const registration = handle.mock.calls.find(
+        ([method]) => method === 'Authorize',
+      );
+      expect(registration).toBeDefined();
+      const authorizeHandler = registration![1];
+
+      await expect(authorizeHandler({ params })).resolves.toMatchObject({
+          idTagInfo: {
+              status: 'Invalid',
+          }
+      });
+
+      expect(findByIdTag).toHaveBeenCalledWith('TEST');
+      });
+      
+      it('propagates database Errors', async () => {
+          const error = new Error('Database failure');
+      findByIdTag.mockRejectedValue(error);
+      const registration = handle.mock.calls.find(
+        ([method]) => method === 'Authorize',
+      );
+      expect(registration).toBeDefined();
+      const authorizeHandler = registration![1];
+
+      await expect(authorizeHandler({ params })).rejects.toBe(error);
+
+      expect(findByIdTag).toHaveBeenCalledWith('TEST');
     });
   });
 });
