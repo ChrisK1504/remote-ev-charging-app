@@ -9,6 +9,7 @@ import { UserModule } from '../users/user.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChargerService } from './charger.service';
 import { Charger } from './charger.entity';
+import { OcppRpcServerService } from './ocpp-rpc-server.service';
 
 @Module({
   imports: [SessionModule, UserModule, TypeOrmModule.forFeature([Charger])],
@@ -19,6 +20,7 @@ import { Charger } from './charger.entity';
     PendingRequestService,
     OcppCallHandlersService,
     ChargerService,
+    OcppRpcServerService
   ],
   exports: [OcppServerService, ChargeStateService],
 })
