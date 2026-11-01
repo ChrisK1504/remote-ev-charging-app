@@ -2,7 +2,6 @@ import { RPCServer } from 'ocpp-rpc';
 import { ChargerService } from './charger.service';
 import { OcppRpcServerService } from './ocpp-rpc-server.service';
 import { EventEmitter } from 'stream';
-import { identity } from 'rxjs';
 
 jest.mock('ocpp-rpc', () => ({
   ...jest.requireActual('ocpp-rpc'),
@@ -95,6 +94,46 @@ describe('Ocpp-RPC Server Service', () => {
         status: 'Accepted',
       });
       expect(settled).toBe(true);
+    });
+  });
+  describe('Heartbeat', () => {
+    let handle: jest.Mock;
+    const params = {};
+
+    beforeEach(async () => {
+      handle = jest.fn();
+
+      const server = Object.assign(new EventEmitter(), {
+        auth: jest.fn(),
+        listen: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+
+      jest
+        .mocked(RPCServer)
+        .mockImplementation(() => server as unknown as RPCServer);
+
+      const service = new OcppRpcServerService({} as unknown as ChargerService);
+
+      await service.onModuleInit();
+
+      server.emit('client', {
+        identity: 'CP_TEST',
+        session: { sessionId: 'test' },
+        handle,
+      });
+    });
+
+    it('returns the date in ISO string format', () => {
+      const registration = handle.mock.calls.find(
+        ([method]) => method === 'Heartbeat',
+      );
+      expect(registration).toBeDefined();
+      const heartbeatHandler = registration![1];
+
+      expect(heartbeatHandler({ params })).toMatchObject({
+        currentTime: expect.any(String),
+      });
     });
   });
 });

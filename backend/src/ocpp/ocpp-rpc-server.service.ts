@@ -36,6 +36,11 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
         };
       });
 
+      client.handle('Heartbeat', ({ params }) => {
+        console.log(`Server got Heartbeat from ${client.identity}`, params);
+        return { currentTime: new Date().toISOString() };
+      });
+
       client.handle(({ method, params }) => {
         throw createRPCError('NotImplemented');
       });
