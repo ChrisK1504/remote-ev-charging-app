@@ -2,12 +2,14 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ChargerService } from './charger.service';
 import { createRPCError, RPCServer } from 'ocpp-rpc';
 import { UserService } from '../users/user.service';
+import { RpcConnectionManagerService } from './rpc-connection-manager.service';
 
 @Injectable()
 export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly chargerService: ChargerService,
     private readonly userService: UserService,
+    private readonly connections: RpcConnectionManagerService,
   ) {}
   private server!: RPCServer;
 
@@ -23,6 +25,10 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.server.on('client', (client) => {
+      client.on('close', () => {
+        this.connections.removeIfCurrent(client.identity, client);
+      });
+      this.connections.add(client);
       console.log(`${client.session.sessionId} connected!`);
 
       client.handle('BootNotification', async ({ params }) => {

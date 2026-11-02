@@ -1,5 +1,14 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — RPC connection registry
+
+- Added injectable RpcConnectionManagerService and registered it once in OcppModule. It owns an in-memory identity-to-RPC-client Map with get, add, and removeIfCurrent operations; the existing raw-WebSocket manager remains separate during migration.
+- The replacement is stored before the old client is asked to close with code 1000. Re-registering the same object does not close it. Rejected close attempts are logged without removing the replacement. OcppRpcServerService registers each client's close listener and delegates registration/removal to this manager; delayed close events from an old client cannot delete its replacement.
+- ocpp-rpc 2.2.1 does not export the server-client type at its package root; the manager uses the package's lib/server-client declaration through a type-only import. Recheck this path on dependency upgrades.
+- Verified under Node 24.21.0: 245 tests pass across thirteen suites; two opt-in PostgreSQL tests are skipped. TypeScript --noEmit --incremental false and git diff --check pass. New tests cover replacement-before-close ordering, synchronous and delayed old-client removal, current-client removal, independent identities, repeated registration, close rejection logging, and actual server event wiring with EventEmitter clients.
+- Limits: no live charger or network verification in this increment. This registry does not authenticate charger identities, cancel application work already running on old clients, or update ChargeStateService. A failed old-client close leaves that client potentially connected; future state-mutating RPC handlers need current-client guards. StatusNotification and MeterValues migration remain separate tasks.
+- Commit checkpoint: this connection-registry increment is ready to review and commit on feat/ocpp-rcp-integration. No commit or merge was performed. Next bounded task: agree on transport ownership of shared charger state before wiring RPC connection/status updates, since both listeners currently coexist.
+
 ## 2026-10-29 — Charger persistence merge checkpoint
 
 - Developer reports applying migration 007 locally, completing the charging lifecycle successfully, and observing the charger row in PostgreSQL. This is developer-provided manual evidence; the assistant did not independently operate the simulator or inspect that application row.
