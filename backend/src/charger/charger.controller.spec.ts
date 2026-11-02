@@ -7,7 +7,7 @@ import request from 'supertest';
 import { AuthController } from '../auth/auth.controller';
 import { AuthService } from '../auth/auth.service';
 import { ChargeStateService } from '../ocpp/charger-state.service';
-import { OcppServerService } from '../ocpp/ocpp-server.service';
+import { OcppRpcServerService } from '../ocpp/ocpp-rpc-server.service';
 import { User } from '../users/user.entity';
 import { UserService } from '../users/user.service';
 import { ChargerController } from './charger.controller';
@@ -34,7 +34,7 @@ describe('Charger command authentication (HTTP)', () => {
         UserService,
         { provide: getRepositoryToken(User), useValue: repository },
         { provide: ChargeStateService, useValue: state },
-        { provide: OcppServerService, useValue: ocpp },
+        { provide: OcppRpcServerService, useValue: ocpp },
       ],
     }).compile();
     app = module.createNestApplication();

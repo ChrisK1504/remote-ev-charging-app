@@ -23,7 +23,14 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+NestJS CSMS backend using ocpp-rpc 2.2.1 for OCPP 1.6J and PostgreSQL for users, chargers, and charging sessions.
+
+The RPC listener runs on port **9001**; the old custom WebSocket listener on
+9000 has been removed. Configure a charger endpoint such as
+`ws://localhost:9001/ocpp/CP_001` with subprotocol `ocpp1.6`.
+HTTP remote start/stop endpoints use the current RPC connection. Connector
+status and latest meter readings remain in memory. Payload validation helpers
+are still used at the outbound HTTP/RPC boundary.
 
 ## Project setup
 

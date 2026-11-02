@@ -1,0 +1,292 @@
+import {
+  BadGatewayException,
+  BadRequestException,
+  GatewayTimeoutException,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ChargerService } from './charger.service';
+import {
+  createRPCError,
+  RPCClient,
+  RPCError,
+  RPCServer,
+  TimeoutError,
+} from 'ocpp-rpc';
+import { UserService } from '../users/user.service';
+import { RpcConnectionManagerService } from './rpc-connection-manager.service';
+import { ChargeStateService } from './charger-state.service';
+import type {
+  AuthorizeRequest,
+  BootNotificationRequest,
+  HeartbeatRequest,
+  MeterValuesRequest,
+  OcppActionMap,
+  RemoteStartTransactionRequest,
+  RemoteStopTransactionRequest,
+  StartTransactionRequest,
+  StatusNotificationRequest,
+  StopTransactionRequest,
+} from './ocpp.types';
+import {
+  ActiveSessionConflictError,
+  SessionService,
+} from '../session/session.service';
+import { validatePayload } from './ocpp-validation';
+
+@Injectable()
+export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
+  constructor(
+    private readonly chargerService: ChargerService,
+    private readonly userService: UserService,
+    private readonly connections: RpcConnectionManagerService,
+    private readonly chargeStateService: ChargeStateService,
+    private readonly sessionService: SessionService,
+  ) {}
+  private server!: RPCServer;
+
+  getActiveSession(chargePointId: string, connectorId: number) {
+    return this.sessionService.findActive(chargePointId, connectorId);
+  }
+
+  remoteStartTransaction(
+    chargePointId: string,
+    payload: RemoteStartTransactionRequest,
+  ) {
+    return this.sendRemoteCall(
+      chargePointId,
+      'RemoteStartTransaction',
+      payload,
+    );
+  }
+
+  remoteStopTransaction(
+    chargePointId: string,
+    payload: RemoteStopTransactionRequest,
+  ) {
+    return this.sendRemoteCall(chargePointId, 'RemoteStopTransaction', payload);
+  }
+
+  private async sendRemoteCall<
+    A extends 'RemoteStartTransaction' | 'RemoteStopTransaction',
+  >(
+    chargePointId: string,
+    action: A,
+    payload: OcppActionMap[A]['request'],
+  ): Promise<OcppActionMap[A]['response']> {
+    const validationError = validatePayload(action, 'request', payload);
+    if (validationError) throw new BadRequestException(validationError);
+    const client = this.connections.get(chargePointId);
+    if (!client || client.state !== RPCClient.OPEN) {
+      throw new ServiceUnavailableException(
+        `Charge point ${chargePointId} is not connected`,
+      );
+    }
+
+    let response: unknown;
+    try {
+      response = await client.call(action, payload, { callTimeoutMs: 10000 });
+    } catch (error) {
+      if (error instanceof TimeoutError) {
+        throw new GatewayTimeoutException(
+          `${action} timed out; charger outcome is unknown`,
+        );
+      }
+      if (error instanceof RPCError) {
+        throw new BadGatewayException({
+          message: 'Charger returned an OCPP error',
+          errorCode: error.rpcErrorCode,
+          description: error.message,
+        });
+      }
+      if (
+        client.state !== RPCClient.OPEN ||
+        this.connections.get(chargePointId) !== client
+      ) {
+        throw new ServiceUnavailableException(
+          `Charge point ${chargePointId} disconnected during ${action}`,
+        );
+      }
+      throw new BadGatewayException(
+        `Failed to communicate with charge point ${chargePointId}`,
+      );
+    }
+
+    const responseError = validatePayload(action, 'response', response);
+    if (responseError)
+      throw new BadGatewayException(
+        `Invalid ${action} response: ${responseError}`,
+      );
+    return response as OcppActionMap[A]['response'];
+  }
+
+  async onModuleInit() {
+    this.server = new RPCServer({
+      protocols: ['ocpp1.6'],
+      strictMode: true,
+    });
+    this.server.auth((accept, reject, handshake) => {
+      accept({
+        sessionId: 'TEST123',
+      });
+    });
+
+    this.server.on('client', (client) => {
+      client.on('close', () => {
+        if (this.connections.get(client.identity) !== client) return;
+        this.connections.removeIfCurrent(client.identity, client);
+        this.chargeStateService.disconnect(client.identity);
+      });
+      this.connections.add(client);
+      this.chargeStateService.connect(client.identity);
+      console.log(`${client.session.sessionId} connected!`);
+
+      client.handle(
+        'BootNotification',
+        async ({ params }: { params: BootNotificationRequest }) => {
+          console.log(
+            `Server got BootNotification from ${client.identity}`,
+            params,
+          );
+
+          await this.chargerService.registerOrUpdate(client.identity, params);
+
+          return {
+            status: 'Accepted',
+            interval: 300,
+            currentTime: new Date().toISOString(),
+          };
+        },
+      );
+
+      client.handle('Heartbeat', ({ params }: { params: HeartbeatRequest }) => {
+        console.log(`Server got Heartbeat from ${client.identity}`, params);
+        return { currentTime: new Date().toISOString() };
+      });
+
+      client.handle(
+        'StatusNotification',
+        ({ params }: { params: StatusNotificationRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          console.log(
+            `${client.identity} connector ${params.connectorId}: ${params.status}`,
+          );
+          this.chargeStateService.updateConnector(client.identity, {
+            connectorId: params.connectorId,
+            status: params.status,
+            errorCode: params.errorCode,
+            updatedAt: new Date(),
+          });
+          return {};
+        },
+      );
+
+      client.handle(
+        'StartTransaction',
+        async ({ params }: { params: StartTransactionRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          console.log(
+            `Start transaction from: ${client.identity} for connector: ${params.connectorId}`,
+          );
+          try {
+            const outcome = await this.sessionService.start({
+              chargePointId: client.identity,
+              connectorId: params.connectorId,
+              idTag: params.idTag,
+              meterStart: params.meterStart,
+              startedAt: new Date(params.timestamp),
+            });
+            return {
+              transactionId: outcome.transactionId,
+              idTagInfo: { status: outcome.authorizationStatus },
+            };
+          } catch (error) {
+            if (error instanceof ActiveSessionConflictError) {
+              throw createRPCError(
+                'GenericError',
+                'Connector already has an active session',
+              );
+            }
+            throw error;
+          }
+        },
+      );
+
+      client.handle(
+        'StopTransaction',
+        async ({ params }: { params: StopTransactionRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          const completed = await this.sessionService.complete({
+            transactionId: params.transactionId,
+            chargePointId: client.identity,
+            endedAt: new Date(params.timestamp),
+            meterStop: params.meterStop,
+          });
+          if (completed) {
+            console.log(`Completed transaction ${params.transactionId}`);
+          } else {
+            console.log(
+              `No active session matched transaction ${params.transactionId} for charger ${client.identity}`,
+            );
+          }
+          return {};
+        },
+      );
+
+      client.handle(
+        'MeterValues',
+        ({ params }: { params: MeterValuesRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          this.chargeStateService.updateMeterValues(client.identity, params);
+          return {};
+        },
+      );
+
+      client.handle(
+        'Authorize',
+        async ({ params }: { params: AuthorizeRequest }) => {
+          console.log(`Server got Authorize from ${client.identity}`, params);
+          const authorizedUser = await this.userService.findByIdTag(
+            params.idTag,
+          );
+          if (authorizedUser) {
+            return { idTagInfo: { status: 'Accepted' } };
+          }
+          return { idTagInfo: { status: 'Invalid' } };
+        },
+      );
+
+      client.handle(({ method, params }) => {
+        throw createRPCError('NotImplemented');
+      });
+    });
+
+    await this.server.listen(9001);
+  }
+
+  async onModuleDestroy() {
+    await this.server.close({ code: 1001, reason: 'Server shutting down' });
+  }
+}
