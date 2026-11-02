@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — RPC StatusNotification
+
+- Registered StatusNotification directly in OcppRpcServerService, injecting the existing ChargeStateService. The handler uses client.identity and the reported connectorId/status/errorCode, records server receipt time in updatedAt, and returns an empty response. It preserves the existing handler's timestamp policy and updateConnector merge behavior; charger-reported timestamp/info/vendor fields are not newly persisted.
+- RPC connection events now initialize shared charger state so updates do not silently target an unknown charger. Closing the current RPC client marks it disconnected; an old client's delayed close cannot disconnect its replacement. Status updates from stale or closed clients throw a GenericError before mutating state. This is local stale-connection policy, not a newly asserted OCPP requirement.
+- Verified under Node 24.21.0: 248 tests pass across thirteen suites; two opt-in PostgreSQL tests are skipped. TypeScript --noEmit --incremental false and git diff --check pass. Added handler/event regressions covering correct identity, receipt time, empty acknowledgment, connector 0, independent chargers/connectors, retained meter/transaction data, stale-client rejection, and disconnect/replacement state.
+- Limits: tests use mocked RPCServer and EventEmitter clients, not a live network or hardware. Runtime schema validation remains the configured ocpp-rpc strictMode responsibility. Both transport listeners still share ChargeStateService but have independent connection registries: do not connect the same charger identity concurrently to both ports during migration, since cross-transport ownership is not coordinated. HTTP remote commands still use the old transport.
+- Commit checkpoint: review and commit this bounded StatusNotification increment on feat/ocpp-rcp-integration; do not merge the incomplete transport migration yet. No commit or merge performed. Next candidate is MeterValues with the same current-client guard and existing latest-reading policy.
+
 ## 2026-11-02 — RPC connection registry
 
 - Added injectable RpcConnectionManagerService and registered it once in OcppModule. It owns an in-memory identity-to-RPC-client Map with get, add, and removeIfCurrent operations; the existing raw-WebSocket manager remains separate during migration.

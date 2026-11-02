@@ -3,6 +3,8 @@ import { ChargerService } from './charger.service';
 import { createRPCError, RPCServer } from 'ocpp-rpc';
 import { UserService } from '../users/user.service';
 import { RpcConnectionManagerService } from './rpc-connection-manager.service';
+import { ChargeStateService } from './charger-state.service';
+import type { StatusNotificationRequest } from './ocpp.types';
 
 @Injectable()
 export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
@@ -10,6 +12,7 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
     private readonly chargerService: ChargerService,
     private readonly userService: UserService,
     private readonly connections: RpcConnectionManagerService,
+    private readonly chargeStateService: ChargeStateService,
   ) {}
   private server!: RPCServer;
 
@@ -26,9 +29,12 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
 
     this.server.on('client', (client) => {
       client.on('close', () => {
+        if (this.connections.get(client.identity) !== client) return;
         this.connections.removeIfCurrent(client.identity, client);
+        this.chargeStateService.disconnect(client.identity);
       });
       this.connections.add(client);
+      this.chargeStateService.connect(client.identity);
       console.log(`${client.session.sessionId} connected!`);
 
       client.handle('BootNotification', async ({ params }) => {
@@ -50,6 +56,28 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
         console.log(`Server got Heartbeat from ${client.identity}`, params);
         return { currentTime: new Date().toISOString() };
       });
+
+      client.handle(
+        'StatusNotification',
+        ({ params }: { params: StatusNotificationRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          console.log(
+            `${client.identity} connector ${params.connectorId}: ${params.status}`,
+          );
+          this.chargeStateService.updateConnector(client.identity, {
+            connectorId: params.connectorId,
+            status: params.status,
+            errorCode: params.errorCode,
+            updatedAt: new Date(),
+          });
+          return {};
+        },
+      );
 
       client.handle('Authorize', async ({ params }) => {
         console.log(`Server got Authorize from ${client.identity}`, params);
