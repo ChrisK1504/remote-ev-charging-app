@@ -1,5 +1,21 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — RPC command test consolidation
+
+- Moved the 24 outbound-command cases into a nested RPC remote commands section of ocpp-rpc-server.spec.ts and removed the separate command spec at the developer's request. No runtime behavior changed.
+- Clarification: strictMode already validates outbound requests and incoming responses. The additional validatePayload checks currently duplicate schema validation to retain request HTTP 400 and response HTTP 502 classification; they are not needed for RPC correlation or wire validation. Removing them requires an explicit decision on HTTP classification of library validation failures.
+- Verified: all 50 tests in the consolidated spec pass; TypeScript --noEmit --incremental false and git diff --check pass under Node 24.21.0. Full-suite result above the consolidation remains the preceding 288-test run; it was not rerun for this test-only move.
+
+## 2026-11-02 — HTTP remote commands through RPC
+
+- Added remoteStartTransaction and remoteStopTransaction to OcppRpcServerService. Both resolve the current OPEN RPC client and await client.call with a ten-second response timeout. Correlation, queueing, pending-call cleanup, and wire handling belong to ocpp-rpc; commands are never automatically retried or resent on a replacement connection. Library-default outbound concurrency remains one call per client; queue wait is outside the per-call response timeout.
+- ChargerController now injects the RPC service; OcppModule exports it in place of the old server. API paths and response bodies are unchanged. Login checks, server-derived start idTag, connector validation, and stop-session ownership enforcement remain in the controller. getActiveSession delegates to SessionService.findActive using PostgreSQL.
+- Preserved outbound request/response schema checks using existing validatePayload, so ocpp-validation.ts and its direct Ajv dependency are still required even after this rewire. Invalid request -> 400, unavailable/disconnected client -> 503, CALLERROR/invalid response/other communication failure -> 502. Timeout now explicitly returns 504 with outcome unknown rather than the old generic 500; it does not prove the charger failed to execute the command. Accepted/Rejected responses pass through without asserting physical charging outcomes.
+- Verified under Node 24.21.0: 288 tests pass across fourteen suites; two opt-in PostgreSQL tests are skipped. TypeScript --noEmit --incremental false and git diff --check pass. Updated HTTP test provider wiring preserves the existing authentication/ownership regressions; added 24 outbound-command cases covering responses, payloads, delayed replies, failures, timeout, disconnect, replacement without retry, and active-session lookup.
+- Independently exercised both service methods over real strict-mode ocpp-rpc server/client sockets on an ephemeral local port: remote start Accepted, remote stop Rejected, and remote stop CALLERROR -> HTTP exception status 502. No database or physical charger was involved; this does not establish a complete HTTP-to-charger charging lifecycle.
+- Migration limits: the old listener still starts on port 9000, while RPC listens on 9001. HTTP remote controls now require the charger to connect to the RPC listener. The same identity should not use both transports concurrently because charger state is shared. Old implementation removal, endpoint/port cutover, full simulator lifecycle verification, and replacing duplicate validation with a reviewed library-validation boundary remain separate work.
+- Commit checkpoint: review and commit this bounded rewire on feat/ocpp-rcp-integration. No commit or merge performed. Next step is a full authenticated start/meter/stop/start cycle against RPC, followed by removal of the old transport and its implementation-specific tests while preserving behavioral coverage.
+
 ## 2026-11-02 — RPC MeterValues
 
 - Registered MeterValues directly in OcppRpcServerService, delegating client.identity and the typed request to ChargeStateService.updateMeterValues and returning an empty acknowledgment. Replaced/closed clients are rejected before mutation. No new persistence or energy-accounting policy was introduced.

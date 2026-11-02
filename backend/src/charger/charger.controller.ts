@@ -13,7 +13,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ChargeStateService } from '../ocpp/charger-state.service';
-import { OcppServerService } from '../ocpp/ocpp-server.service';
+import { OcppRpcServerService } from '../ocpp/ocpp-rpc-server.service';
 import type { ChargePointState } from '../ocpp/ocpp.types';
 import express from 'express';
 import { AuthService } from '../auth/auth.service';
@@ -23,7 +23,7 @@ import { UserService } from '../users/user.service';
 export class ChargerController {
   constructor(
     private readonly chargeStateService: ChargeStateService,
-    private readonly ocppServerService: OcppServerService,
+    private readonly ocppRpcServerService: OcppRpcServerService,
     private readonly authService: AuthService,
     private readonly userService: UserService,
   ) {}
@@ -73,7 +73,7 @@ export class ChargerController {
     if (!identity) {
       throw new UnauthorizedException();
     }
-    return this.ocppServerService.remoteStartTransaction(id, {
+    return this.ocppRpcServerService.remoteStartTransaction(id, {
       idTag: identity.idTag,
       connectorId,
     });
@@ -98,7 +98,7 @@ export class ChargerController {
       throw new BadRequestException('connectorId must be a positive integer');
     }
 
-    const session = await this.ocppServerService.getActiveSession(
+    const session = await this.ocppRpcServerService.getActiveSession(
       chargePointId,
       connectorId,
     );
@@ -113,7 +113,7 @@ export class ChargerController {
       );
     }
 
-    return this.ocppServerService.remoteStopTransaction(chargePointId, {
+    return this.ocppRpcServerService.remoteStopTransaction(chargePointId, {
       transactionId: session.transactionId,
     });
   }

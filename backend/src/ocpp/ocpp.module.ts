@@ -24,6 +24,6 @@ import { RpcConnectionManagerService } from './rpc-connection-manager.service';
     OcppRpcServerService,
     RpcConnectionManagerService,
   ],
-  exports: [OcppServerService, ChargeStateService],
+  exports: [OcppRpcServerService, ChargeStateService],
 })
 export class OcppModule {}

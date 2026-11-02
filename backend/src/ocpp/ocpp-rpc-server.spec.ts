@@ -1,4 +1,10 @@
-import { RPCServer } from 'ocpp-rpc';
+import {
+  BadGatewayException,
+  BadRequestException,
+  GatewayTimeoutException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { createRPCError, RPCClient, RPCServer, TimeoutError } from 'ocpp-rpc';
 import { ChargerService } from './charger.service';
 import { OcppRpcServerService } from './ocpp-rpc-server.service';
 import { EventEmitter } from 'stream';
@@ -16,6 +22,168 @@ jest.mock('ocpp-rpc', () => ({
 }));
 
 describe('Ocpp-RPC Server Service', () => {
+  describe('RPC remote commands', () => {
+    let service: OcppRpcServerService;
+    let client: { state: number; call: jest.Mock };
+    let get: jest.Mock;
+    const findActive = jest.fn();
+
+    beforeEach(() => {
+      client = { state: RPCClient.OPEN, call: jest.fn() };
+      get = jest.fn().mockReturnValue(client);
+      findActive.mockReset();
+      service = new OcppRpcServerService(
+        {} as ChargerService,
+        {} as UserService,
+        { get } as unknown as RpcConnectionManagerService,
+        new ChargeStateService(),
+        { findActive } as unknown as SessionService,
+      );
+    });
+
+    const cases = [
+      {
+        method: 'remoteStartTransaction',
+        action: 'RemoteStartTransaction',
+        payload: { idTag: 'TEST', connectorId: 2 },
+      },
+      {
+        method: 'remoteStopTransaction',
+        action: 'RemoteStopTransaction',
+        payload: { transactionId: 42 },
+      },
+    ] as const;
+
+    describe.each(cases)('$action', ({ method, action, payload }) => {
+      const send = (service: OcppRpcServerService) =>
+        method === 'remoteStartTransaction'
+          ? service.remoteStartTransaction('CP_TEST', {
+              idTag: 'TEST',
+              connectorId: 2,
+            })
+          : service.remoteStopTransaction('CP_TEST', { transactionId: 42 });
+
+      it.each(['Accepted', 'Rejected'])(
+        'returns %s without interpreting it as a physical outcome',
+        async (status) => {
+          client.call.mockResolvedValue({ status });
+          await expect(send(service)).resolves.toEqual({ status });
+          expect(get).toHaveBeenCalledWith('CP_TEST');
+          expect(client.call).toHaveBeenCalledTimes(1);
+          expect(client.call).toHaveBeenCalledWith(action, payload, {
+            callTimeoutMs: 10000,
+          });
+        },
+      );
+
+      it('rejects a missing connection', async () => {
+        get.mockReturnValue(undefined);
+        await expect(send(service)).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+        expect(client.call).not.toHaveBeenCalled();
+      });
+
+      it('rejects a closing connection', async () => {
+        client.state = RPCClient.CLOSING;
+        await expect(send(service)).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+        expect(client.call).not.toHaveBeenCalled();
+      });
+
+      it('waits for the RPC response', async () => {
+        let finish!: (result: { status: string }) => void;
+        client.call.mockReturnValue(
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+        );
+        let settled = false;
+        const response = send(service).then((result) => {
+          settled = true;
+          return result;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        finish({ status: 'Accepted' });
+        await expect(response).resolves.toEqual({ status: 'Accepted' });
+      });
+
+      it('maps CALLERROR to HTTP 502', async () => {
+        client.call.mockRejectedValue(
+          createRPCError('NotSupported', 'Unsupported command'),
+        );
+        await expect(send(service)).rejects.toMatchObject({
+          status: 502,
+          response: {
+            errorCode: 'NotSupported',
+            description: 'Unsupported command',
+          },
+        });
+      });
+
+      it('maps timeout to HTTP 504 without retrying', async () => {
+        client.call.mockRejectedValue(new TimeoutError('Call timeout'));
+        await expect(send(service)).rejects.toBeInstanceOf(
+          GatewayTimeoutException,
+        );
+        expect(client.call).toHaveBeenCalledTimes(1);
+      });
+
+      it('maps disconnect during a call to HTTP 503', async () => {
+        client.call.mockImplementation(async () => {
+          client.state = RPCClient.CLOSED;
+          throw new Error('Client disconnected');
+        });
+        await expect(send(service)).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+      });
+
+      it('does not retry a failed call on a replacement connection', async () => {
+        const replacement = { state: RPCClient.OPEN, call: jest.fn() };
+        client.call.mockImplementation(async () => {
+          get.mockReturnValue(replacement);
+          throw new Error('Client disconnected');
+        });
+        await expect(send(service)).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+        expect(replacement.call).not.toHaveBeenCalled();
+      });
+
+      it('maps unexpected communication failure to HTTP 502', async () => {
+        client.call.mockRejectedValue(new Error('Send failed'));
+        await expect(send(service)).rejects.toBeInstanceOf(BadGatewayException);
+      });
+
+      it('rejects an invalid response', async () => {
+        client.call.mockResolvedValue({ status: 'Charging' });
+        await expect(send(service)).rejects.toBeInstanceOf(BadGatewayException);
+      });
+    });
+
+    it('rejects invalid start and stop payloads before dispatch', async () => {
+      await expect(
+        service.remoteStartTransaction('CP_TEST', { idTag: 'x'.repeat(21) }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.remoteStopTransaction('CP_TEST', { transactionId: 1.5 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(client.call).not.toHaveBeenCalled();
+    });
+
+    it('delegates active-session lookup to persistence', async () => {
+      const session = { transactionId: 42, userId: 'owner' };
+      findActive.mockResolvedValue(session);
+      await expect(service.getActiveSession('CP_TEST', 2)).resolves.toBe(
+        session,
+      );
+      expect(findActive).toHaveBeenCalledWith('CP_TEST', 2);
+    });
+  });
+
   describe('MeterValues', () => {
     let server: EventEmitter;
     let state: ChargeStateService;

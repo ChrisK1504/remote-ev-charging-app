@@ -1,6 +1,20 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  GatewayTimeoutException,
+  Injectable,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ChargerService } from './charger.service';
-import { createRPCError, RPCServer } from 'ocpp-rpc';
+import {
+  createRPCError,
+  RPCClient,
+  RPCError,
+  RPCServer,
+  TimeoutError,
+} from 'ocpp-rpc';
 import { UserService } from '../users/user.service';
 import { RpcConnectionManagerService } from './rpc-connection-manager.service';
 import { ChargeStateService } from './charger-state.service';
@@ -9,6 +23,9 @@ import type {
   BootNotificationRequest,
   HeartbeatRequest,
   MeterValuesRequest,
+  OcppActionMap,
+  RemoteStartTransactionRequest,
+  RemoteStopTransactionRequest,
   StartTransactionRequest,
   StatusNotificationRequest,
   StopTransactionRequest,
@@ -17,6 +34,7 @@ import {
   ActiveSessionConflictError,
   SessionService,
 } from '../session/session.service';
+import { validatePayload } from './ocpp-validation';
 
 @Injectable()
 export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
@@ -28,6 +46,81 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
     private readonly sessionService: SessionService,
   ) {}
   private server!: RPCServer;
+
+  getActiveSession(chargePointId: string, connectorId: number) {
+    return this.sessionService.findActive(chargePointId, connectorId);
+  }
+
+  remoteStartTransaction(
+    chargePointId: string,
+    payload: RemoteStartTransactionRequest,
+  ) {
+    return this.sendRemoteCall(
+      chargePointId,
+      'RemoteStartTransaction',
+      payload,
+    );
+  }
+
+  remoteStopTransaction(
+    chargePointId: string,
+    payload: RemoteStopTransactionRequest,
+  ) {
+    return this.sendRemoteCall(chargePointId, 'RemoteStopTransaction', payload);
+  }
+
+  private async sendRemoteCall<
+    A extends 'RemoteStartTransaction' | 'RemoteStopTransaction',
+  >(
+    chargePointId: string,
+    action: A,
+    payload: OcppActionMap[A]['request'],
+  ): Promise<OcppActionMap[A]['response']> {
+    const validationError = validatePayload(action, 'request', payload);
+    if (validationError) throw new BadRequestException(validationError);
+    const client = this.connections.get(chargePointId);
+    if (!client || client.state !== RPCClient.OPEN) {
+      throw new ServiceUnavailableException(
+        `Charge point ${chargePointId} is not connected`,
+      );
+    }
+
+    let response: unknown;
+    try {
+      response = await client.call(action, payload, { callTimeoutMs: 10000 });
+    } catch (error) {
+      if (error instanceof TimeoutError) {
+        throw new GatewayTimeoutException(
+          `${action} timed out; charger outcome is unknown`,
+        );
+      }
+      if (error instanceof RPCError) {
+        throw new BadGatewayException({
+          message: 'Charger returned an OCPP error',
+          errorCode: error.rpcErrorCode,
+          description: error.message,
+        });
+      }
+      if (
+        client.state !== RPCClient.OPEN ||
+        this.connections.get(chargePointId) !== client
+      ) {
+        throw new ServiceUnavailableException(
+          `Charge point ${chargePointId} disconnected during ${action}`,
+        );
+      }
+      throw new BadGatewayException(
+        `Failed to communicate with charge point ${chargePointId}`,
+      );
+    }
+
+    const responseError = validatePayload(action, 'response', response);
+    if (responseError)
+      throw new BadGatewayException(
+        `Invalid ${action} response: ${responseError}`,
+      );
+    return response as OcppActionMap[A]['response'];
+  }
 
   async onModuleInit() {
     this.server = new RPCServer({
