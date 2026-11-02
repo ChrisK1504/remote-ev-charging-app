@@ -5,6 +5,10 @@ import { UserService } from '../users/user.service';
 import { RpcConnectionManagerService } from './rpc-connection-manager.service';
 import { ChargeStateService } from './charger-state.service';
 import type {
+  AuthorizeRequest,
+  BootNotificationRequest,
+  HeartbeatRequest,
+  MeterValuesRequest,
   StartTransactionRequest,
   StatusNotificationRequest,
   StopTransactionRequest,
@@ -46,22 +50,25 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
       this.chargeStateService.connect(client.identity);
       console.log(`${client.session.sessionId} connected!`);
 
-      client.handle('BootNotification', async ({ params }) => {
-        console.log(
-          `Server got BootNotification from ${client.identity}`,
-          params,
-        );
+      client.handle(
+        'BootNotification',
+        async ({ params }: { params: BootNotificationRequest }) => {
+          console.log(
+            `Server got BootNotification from ${client.identity}`,
+            params,
+          );
 
-        await this.chargerService.registerOrUpdate(client.identity, params);
+          await this.chargerService.registerOrUpdate(client.identity, params);
 
-        return {
-          status: 'Accepted',
-          interval: 300,
-          currentTime: new Date().toISOString(),
-        };
-      });
+          return {
+            status: 'Accepted',
+            interval: 300,
+            currentTime: new Date().toISOString(),
+          };
+        },
+      );
 
-      client.handle('Heartbeat', ({ params }) => {
+      client.handle('Heartbeat', ({ params }: { params: HeartbeatRequest }) => {
         console.log(`Server got Heartbeat from ${client.identity}`, params);
         return { currentTime: new Date().toISOString() };
       });
@@ -150,14 +157,33 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
         },
       );
 
-      client.handle('Authorize', async ({ params }) => {
-        console.log(`Server got Authorize from ${client.identity}`, params);
-        const authorizedUser = await this.userService.findByIdTag(params.idTag);
-        if (authorizedUser) {
-          return { idTagInfo: { status: 'Accepted' } };
-        }
-        return { idTagInfo: { status: 'Invalid' } };
-      });
+      client.handle(
+        'MeterValues',
+        ({ params }: { params: MeterValuesRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          this.chargeStateService.updateMeterValues(client.identity, params);
+          return {};
+        },
+      );
+
+      client.handle(
+        'Authorize',
+        async ({ params }: { params: AuthorizeRequest }) => {
+          console.log(`Server got Authorize from ${client.identity}`, params);
+          const authorizedUser = await this.userService.findByIdTag(
+            params.idTag,
+          );
+          if (authorizedUser) {
+            return { idTagInfo: { status: 'Accepted' } };
+          }
+          return { idTagInfo: { status: 'Invalid' } };
+        },
+      );
 
       client.handle(({ method, params }) => {
         throw createRPCError('NotImplemented');

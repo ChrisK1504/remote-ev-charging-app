@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — RPC MeterValues
+
+- Registered MeterValues directly in OcppRpcServerService, delegating client.identity and the typed request to ChargeStateService.updateMeterValues and returning an empty acknowledgment. Replaced/closed clients are rejected before mutation. No new persistence or energy-accounting policy was introduced.
+- Preserved the existing snapshot semantics: select the newest timestamp in a batch, ignore older readings across calls, allow equal-timestamp replacement, retain connector status/error/receipt timestamp and transaction data on ignored older updates, and create an Unknown connector for readings received before StatusNotification. transactionId remains optional; readings are not newly checked against persisted session ownership.
+- Verified under Node 24.21.0: 264 tests pass across thirteen suites; two opt-in PostgreSQL tests are skipped. TypeScript --noEmit --incremental false and git diff --check pass. Four new RPC cases exercise real ChargeStateService behavior through captured handlers: unordered batches, pre-status readings, empty acknowledgments, older/equal timestamps, status preservation, charger/connector isolation, optional transaction IDs, and stale-client rejection. Transport is mocked; no live simulator/hardware verification was performed.
+- All seven previously supported inbound actions now have direct RPC handlers. Full transport migration is still incomplete: HTTP remote start/stop commands use the old server, both listeners coexist, and production identity/authentication, replay/recovery, and meter history remain separate work.
+- Commit checkpoint: review and commit this bounded MeterValues increment on feat/ocpp-rcp-integration; no commit or merge performed. Next integration task is migrating outbound remote commands and HTTP wiring before cutting over from the old transport and running a complete lifecycle through RPC.
+
 ## 2026-11-02 — RPC StopTransaction
 
 - Registered StopTransaction directly in OcppRpcServerService. It awaits SessionService.complete using the sending client.identity, transactionId, meterStop, and reported timestamp converted to Date before returning an empty response. The existing service restricts updates to Active sessions belonging to that charger; the stop idTag does not change the session owner.

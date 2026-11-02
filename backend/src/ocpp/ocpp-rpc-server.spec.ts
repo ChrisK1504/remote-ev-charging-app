@@ -16,6 +16,151 @@ jest.mock('ocpp-rpc', () => ({
 }));
 
 describe('Ocpp-RPC Server Service', () => {
+  describe('MeterValues', () => {
+    let server: EventEmitter;
+    let state: ChargeStateService;
+    let service: OcppRpcServerService;
+    const reading = (timestamp: string, value: string) => ({
+      timestamp,
+      sampledValue: [{ value }],
+    });
+
+    function connect(identity = 'CP_METER') {
+      const client = Object.assign(new EventEmitter(), {
+        identity,
+        session: { sessionId: 'test' },
+        handle: jest.fn(),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+      server.emit('client', client);
+      const registration = client.handle.mock.calls.find(
+        ([method]) => method === 'MeterValues',
+      );
+      expect(registration).toBeDefined();
+      return { client, meterValues: registration![1] };
+    }
+
+    beforeEach(async () => {
+      const transport = Object.assign(new EventEmitter(), {
+        auth: jest.fn(),
+        listen: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+      server = transport;
+      jest
+        .mocked(RPCServer)
+        .mockImplementation(() => transport as unknown as RPCServer);
+      state = new ChargeStateService();
+      service = new OcppRpcServerService(
+        {} as ChargerService,
+        {} as UserService,
+        new RpcConnectionManagerService(),
+        state,
+        {} as SessionService,
+      );
+      await service.onModuleInit();
+    });
+
+    afterEach(async () => {
+      await service.onModuleDestroy();
+    });
+
+    it('acknowledges readings before status and creates an Unknown connector with the latest sample', () => {
+      const { meterValues } = connect();
+      connect('CP_OTHER');
+      const latest = reading('2026-11-02T10:02:00Z', '200');
+
+      expect(
+        meterValues({
+          params: {
+            connectorId: 1,
+            transactionId: 42,
+            meterValue: [latest, reading('2026-11-02T10:01:00Z', '100')],
+          },
+        }),
+      ).toEqual({});
+
+      expect(state.get('CP_METER')!.connectors.get(1)).toMatchObject({
+        connectorId: 1,
+        status: 'Unknown',
+        errorCode: 'Unknown',
+        transactionId: 42,
+        meterValue: latest,
+      });
+      expect(state.get('CP_OTHER')!.connectors.size).toBe(0);
+    });
+
+    it('preserves status, ignores older readings, and isolates connectors', () => {
+      const { meterValues } = connect();
+      const updatedAt = new Date('2026-11-02T10:00:00Z');
+      state.updateConnector('CP_METER', {
+        connectorId: 1,
+        status: 'Charging',
+        errorCode: 'NoError',
+        updatedAt,
+      });
+      const latest = reading('2026-11-02T10:02:00Z', '200');
+      meterValues({
+        params: { connectorId: 1, transactionId: 42, meterValue: [latest] },
+      });
+      expect(
+        meterValues({
+          params: {
+            connectorId: 1,
+            transactionId: 99,
+            meterValue: [reading('2026-11-02T10:01:00Z', '100')],
+          },
+        }),
+      ).toEqual({});
+      const otherReading = reading('2026-11-02T10:03:00Z', '300');
+      meterValues({ params: { connectorId: 2, meterValue: [otherReading] } });
+
+      expect(state.get('CP_METER')!.connectors.get(1)).toMatchObject({
+        status: 'Charging',
+        errorCode: 'NoError',
+        updatedAt,
+        transactionId: 42,
+        meterValue: latest,
+      });
+      expect(state.get('CP_METER')!.connectors.get(2)).toMatchObject({
+        meterValue: otherReading,
+        transactionId: undefined,
+      });
+    });
+
+    it('preserves the existing equal-timestamp replacement policy', () => {
+      const { meterValues } = connect();
+      const timestamp = '2026-11-02T10:00:00Z';
+      meterValues({
+        params: { connectorId: 1, meterValue: [reading(timestamp, '100')] },
+      });
+      const replacement = reading(timestamp, '101');
+      meterValues({ params: { connectorId: 1, meterValue: [replacement] } });
+      expect(state.get('CP_METER')!.connectors.get(1)!.meterValue).toEqual(
+        replacement,
+      );
+    });
+
+    it('does not mutate readings from replaced or closed clients', () => {
+      const old = connect();
+      const current = connect();
+      const update = jest.spyOn(state, 'updateMeterValues');
+      const params = {
+        connectorId: 1,
+        meterValue: [reading('2026-11-02T10:00:00Z', '100')],
+      };
+
+      expect(() => old.meterValues({ params })).toThrow(
+        'Connection is no longer current',
+      );
+      current.client.emit('close');
+      expect(() => current.meterValues({ params })).toThrow(
+        'Connection is no longer current',
+      );
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('StopTransaction', () => {
     let complete: jest.Mock;
     let server: EventEmitter;
