@@ -1,5 +1,12 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — RPC StopTransaction
+
+- Registered StopTransaction directly in OcppRpcServerService. It awaits SessionService.complete using the sending client.identity, transactionId, meterStop, and reported timestamp converted to Date before returning an empty response. The existing service restricts updates to Active sessions belonging to that charger; the stop idTag does not change the session owner.
+- Preserved the existing no-match acknowledgment policy for unknown, foreign, and already-completed transaction IDs, with a diagnostic log. An empty response does not claim a row was changed. Persistence errors propagate rather than producing success. Stale or closed RPC clients are rejected before persistence; already-running writes are not canceled by connection replacement.
+- Verified under Node 24.21.0: 260 tests pass across thirteen suites; two opt-in PostgreSQL tests are skipped. TypeScript --noEmit --incremental false and git diff --check pass. Six new RPC handler cases cover input/identity forwarding, repeated/no-match acknowledgments, delayed completion, database failure, and stale-client isolation. These tests mock persistence and RPC transport; they do not independently prove real database ownership enforcement or hardware behavior.
+- Commit checkpoint: review and commit this bounded StopTransaction migration on feat/ocpp-rcp-integration. No commit or merge performed. MeterValues and HTTP remote-command transport migration remain outstanding; the old transport continues to coexist.
+
 ## 2026-11-02 — RPC StartTransaction
 
 - Injected the existing SessionService into OcppRpcServerService and registered StartTransaction directly with ocpp-rpc. It forwards client.identity, connectorId, idTag, meterStart, and the charger timestamp converted to Date; session persistence completes before returning the generated transactionId and authorization outcome. SessionModule already exports SessionService and is imported by OcppModule.

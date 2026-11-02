@@ -16,6 +16,132 @@ jest.mock('ocpp-rpc', () => ({
 }));
 
 describe('Ocpp-RPC Server Service', () => {
+  describe('StopTransaction', () => {
+    let complete: jest.Mock;
+    let server: EventEmitter;
+    let service: OcppRpcServerService;
+    const params = {
+      transactionId: 42,
+      meterStop: 1500,
+      timestamp: '2026-11-02T11:00:00Z',
+      idTag: 'DIFFERENT_STOP_TAG',
+      reason: 'Remote',
+    };
+
+    function connect(identity = 'CP_STOP') {
+      const client = Object.assign(new EventEmitter(), {
+        identity,
+        session: { sessionId: 'test' },
+        handle: jest.fn(),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+      server.emit('client', client);
+      const registration = client.handle.mock.calls.find(
+        ([method]) => method === 'StopTransaction',
+      );
+      expect(registration).toBeDefined();
+      return { client, stopTransaction: registration![1] };
+    }
+
+    beforeEach(async () => {
+      const transport = Object.assign(new EventEmitter(), {
+        auth: jest.fn(),
+        listen: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+      server = transport;
+      jest
+        .mocked(RPCServer)
+        .mockImplementation(() => transport as unknown as RPCServer);
+      complete = jest.fn();
+      service = new OcppRpcServerService(
+        {} as ChargerService,
+        {} as UserService,
+        new RpcConnectionManagerService(),
+        new ChargeStateService(),
+        { complete } as unknown as SessionService,
+      );
+      await service.onModuleInit();
+    });
+
+    afterEach(async () => {
+      await service.onModuleDestroy();
+    });
+
+    it('completes using the sending charger identity without changing session ownership', async () => {
+      complete.mockResolvedValue(true);
+      const { stopTransaction } = connect();
+
+      await expect(stopTransaction({ params })).resolves.toEqual({});
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(complete).toHaveBeenCalledWith({
+        transactionId: 42,
+        chargePointId: 'CP_STOP',
+        endedAt: new Date(params.timestamp),
+        meterStop: 1500,
+      });
+    });
+
+    it('acknowledges repeated stops even when no active session matches', async () => {
+      complete.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      const { stopTransaction } = connect();
+      await expect(stopTransaction({ params })).resolves.toEqual({});
+      await expect(stopTransaction({ params })).resolves.toEqual({});
+      expect(complete).toHaveBeenCalledTimes(2);
+    });
+
+    it('acknowledges an unknown or foreign transaction using the current no-match policy', async () => {
+      complete.mockResolvedValue(false);
+      const { stopTransaction } = connect('CP_OTHER');
+      await expect(stopTransaction({ params })).resolves.toEqual({});
+      expect(complete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transactionId: 42,
+          chargePointId: 'CP_OTHER',
+        }),
+      );
+    });
+
+    it('waits for completion persistence before acknowledging', async () => {
+      let finish!: (completed: boolean) => void;
+      complete.mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const { stopTransaction } = connect();
+      let settled = false;
+      const response = stopTransaction({ params }).then((result) => {
+        settled = true;
+        return result;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      finish(true);
+      await expect(response).resolves.toEqual({});
+    });
+
+    it('propagates database failure without acknowledging success', async () => {
+      const error = new Error('Database unavailable');
+      complete.mockRejectedValue(error);
+      const { stopTransaction } = connect();
+      await expect(stopTransaction({ params })).rejects.toBe(error);
+    });
+
+    it('does not complete sessions from replaced or closed clients', async () => {
+      const old = connect();
+      const current = connect();
+      await expect(old.stopTransaction({ params })).rejects.toThrow(
+        'Connection is no longer current',
+      );
+      current.client.emit('close');
+      await expect(current.stopTransaction({ params })).rejects.toThrow(
+        'Connection is no longer current',
+      );
+      expect(complete).not.toHaveBeenCalled();
+    });
+  });
+
   describe('StartTransaction', () => {
     let start: jest.Mock;
     let server: EventEmitter;

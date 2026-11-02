@@ -7,6 +7,7 @@ import { ChargeStateService } from './charger-state.service';
 import type {
   StartTransactionRequest,
   StatusNotificationRequest,
+  StopTransactionRequest,
 } from './ocpp.types';
 import {
   ActiveSessionConflictError,
@@ -120,6 +121,32 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
             }
             throw error;
           }
+        },
+      );
+
+      client.handle(
+        'StopTransaction',
+        async ({ params }: { params: StopTransactionRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          const completed = await this.sessionService.complete({
+            transactionId: params.transactionId,
+            chargePointId: client.identity,
+            endedAt: new Date(params.timestamp),
+            meterStop: params.meterStop,
+          });
+          if (completed) {
+            console.log(`Completed transaction ${params.transactionId}`);
+          } else {
+            console.log(
+              `No active session matched transaction ${params.transactionId} for charger ${client.identity}`,
+            );
+          }
+          return {};
         },
       );
 
