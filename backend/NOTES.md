@@ -1,5 +1,15 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — Retired custom OCPP transport
+
+- Removed the old OcppServerService, raw ConnectionManagerService, PendingRequestService, OcppCallHandlersService, and envelope guards, together with their five implementation-specific spec files. Removed old provider registrations; RPC is now the only configured OCPP listener, on port 9001. HTTP commands already use OcppRpcServerService.
+- Removed obsolete envelope/error/dispatch types and the unused isIncomingOcppAction helper. Retained application/request/response types, OcppActionMap, local schemas, and schema tests because RPC outbound methods still use validatePayload. Removed the validation spec's obsolete old-server boundary tests; RPC command tests retain application-boundary validation coverage.
+- Removed unused ChargerService.save/findByConnectionId methods. Removed direct @nestjs/platform-ws, @nestjs/websockets, and ws dependencies using npm and updated the lockfile. ocpp-rpc still depends on ws, and @types/ws remains needed by library declarations. Ajv remains directly required by the retained validation helper.
+- Updated current setup instructions in root/backend READMEs to use ws://localhost:9001/ocpp/CP_001 with ocpp1.6. Root research sections are explicitly marked historical; old port 9000 and deleted implementation references in historical notes do not describe the active server.
+- Verified under Node 24.21.0: 229 tests pass across eight suites; two PostgreSQL tests are skipped. TypeScript --noEmit --incremental false, backend production build, and git diff --check pass. No references to removed source modules remain in executable source/tests/scripts. The lower test count reflects retirement of old transport tests, not new failures; RPC handler tests retain persistence ordering, failure, replacement, status/meter merging, and outbound behavior, while SessionService/HTTP tests retain ownership conditions.
+- Limits: remaining RPC tests mock the library boundary; removed envelope/correlation/timer tests exercised our deleted implementation and are not evidence of ocpp-rpc internals. A prior real local RPC smoke check covered outbound Accepted/Rejected/CALLERROR. No new full simulator/database lifecycle was run for this cleanup. Inbound strict-mode wire errors, library timeout/disconnect behavior, authentication/recovery, and real charger interoperability are not fully established by this test suite.
+- Commit checkpoint: review and commit this cleanup on feat/ocpp-rcp-integration. No commit or merge performed. Before merging the transport migration, exercise authenticated start/meter/stop/start via RPC on 9001 and reconnect/shutdown behavior with a live simulator.
+
 ## 2026-11-02 — RPC command test consolidation
 
 - Moved the 24 outbound-command cases into a nested RPC remote commands section of ocpp-rpc-server.spec.ts and removed the separate command spec at the developer's request. No runtime behavior changed.

@@ -3,15 +3,17 @@
 Ne root te projektit ndodhet nje start.sh bash script i cili ben run te treja instancat, backend, frontend, dhe simulatorin OCPP.
 - *http://localhost:5173*: URL-ja e simulatorit. Fillo duke krijuar nje konfigurim te ri per nje 'charge point'.
 ![Ocpp Simulator](images/ocpp-simulator.png).
-CSMS URL duhet te jete : 'ws://localhost:9000/ocpp', dhe kjo 'wss://localhost:9000/ocpp' pasi lidhja nuk permban nje certifikat TLS.
+CSMS URL duhet te jete `ws://localhost:9001/ocpp`, me subprotocol `ocpp1.6`. Identiteti i karikuesit shtohet ne fund, p.sh. `ws://localhost:9001/ocpp/CP_001`. Serveri i vjeter ne portin 9000 eshte hequr. Lidhja lokale nuk perdor TLS.
 - *http://localhost:3000*: URL-ja hyrese backend-it.
 - *http://localhost:5174*: Ketu ndodhet frontend-i. 
 ![Frontend](images/frontend.png)
-Zgjidh nje idTag dhe nje konektor dhe lidhja me backend-in, dhe rrjedhimisht me simulatorin do te kryhet. Vlera metrike duhet te fillojn te shfaqe.
+Hyr me perdoruesin e krijuar, zgjidh konektorin dhe perdor komandat start/stop. Backend-i e merr idTag nga perdoruesi i autentikuar; nuk zgjidhet nga frontend-i.
 
 Shtypni Ctrl-C ne terminalin ku niset skriptin per te mbyllur te treja instancat.
 
 # Pune Kerkimore
+
+> Shënim: seksionet e kërkimit më poshtë dokumentojnë prototipin historik. Implementimi aktual përdor ocpp-rpc për komunikimin, PostgreSQL për përdoruesit/karikuesit/seancat dhe gjendje në memorie për lidhjet, statuset dhe matjet më të fundit. Për progresin aktual shih backend/NOTES.md.
 
 ## 1. Permbledhje
 

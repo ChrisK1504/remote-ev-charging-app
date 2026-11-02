@@ -1,9 +1,5 @@
 import Ajv from 'ajv';
-import {
-  OcppActionMap,
-  INCOMING_OCPP_ACTIONS,
-  IncomingOcppAction,
-} from './ocpp.types';
+import type { OcppActionMap } from './ocpp.types';
 
 // Local JSON Schema definitions transcribed from OCPP 1.6J edition 2 Core:
 // https://ocpp.md/ocpp-1.6j/schemas/core/
@@ -314,12 +310,6 @@ for (const [action, schemas] of Object.entries(payloadSchemas)) {
   for (const direction of ['request', 'response'] as const) {
     validators.set(`${action}.${direction}`, ajv.compile(schemas[direction]));
   }
-}
-
-export function isIncomingOcppAction(
-  action: string,
-): action is IncomingOcppAction {
-  return INCOMING_OCPP_ACTIONS.some((candidate) => candidate === action);
 }
 
 export function validatePayload(
