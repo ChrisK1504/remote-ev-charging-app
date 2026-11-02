@@ -5,6 +5,10 @@ import { EventEmitter } from 'stream';
 import { UserService } from '../users/user.service';
 import { RpcConnectionManagerService } from './rpc-connection-manager.service';
 import { ChargeStateService } from './charger-state.service';
+import {
+  ActiveSessionConflictError,
+  SessionService,
+} from '../session/session.service';
 
 jest.mock('ocpp-rpc', () => ({
   ...jest.requireActual('ocpp-rpc'),
@@ -12,6 +16,135 @@ jest.mock('ocpp-rpc', () => ({
 }));
 
 describe('Ocpp-RPC Server Service', () => {
+  describe('StartTransaction', () => {
+    let start: jest.Mock;
+    let server: EventEmitter;
+    let service: OcppRpcServerService;
+    const params = {
+      connectorId: 2,
+      idTag: 'TEST',
+      meterStart: 1234,
+      timestamp: '2026-11-02T10:00:00Z',
+    };
+
+    function connect() {
+      const client = Object.assign(new EventEmitter(), {
+        identity: 'CP_START',
+        session: { sessionId: 'test' },
+        handle: jest.fn(),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+      server.emit('client', client);
+      const registration = client.handle.mock.calls.find(
+        ([method]) => method === 'StartTransaction',
+      );
+      expect(registration).toBeDefined();
+      return { client, startTransaction: registration![1] };
+    }
+
+    beforeEach(async () => {
+      const transport = Object.assign(new EventEmitter(), {
+        auth: jest.fn(),
+        listen: jest.fn().mockResolvedValue(undefined),
+        close: jest.fn().mockResolvedValue(undefined),
+      });
+      server = transport;
+      jest
+        .mocked(RPCServer)
+        .mockImplementation(() => transport as unknown as RPCServer);
+      start = jest.fn();
+      service = new OcppRpcServerService(
+        {} as ChargerService,
+        {} as UserService,
+        new RpcConnectionManagerService(),
+        new ChargeStateService(),
+        { start } as unknown as SessionService,
+      );
+      await service.onModuleInit();
+    });
+
+    afterEach(async () => {
+      await service.onModuleDestroy();
+    });
+
+    it.each(['Accepted', 'Invalid'] as const)(
+      'returns the persisted transaction ID and %s authorization outcome',
+      async (authorizationStatus) => {
+        start.mockResolvedValue({ transactionId: 42, authorizationStatus });
+        const { startTransaction } = connect();
+
+        await expect(startTransaction({ params })).resolves.toEqual({
+          transactionId: 42,
+          idTagInfo: { status: authorizationStatus },
+        });
+        expect(start).toHaveBeenCalledTimes(1);
+        expect(start).toHaveBeenCalledWith({
+          chargePointId: 'CP_START',
+          connectorId: 2,
+          idTag: 'TEST',
+          meterStart: 1234,
+          startedAt: new Date(params.timestamp),
+        });
+      },
+    );
+
+    it('waits for persistence before returning a transaction ID', async () => {
+      let finish!: (value: {
+        transactionId: number;
+        authorizationStatus: string;
+      }) => void;
+      start.mockReturnValue(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const { startTransaction } = connect();
+      let settled = false;
+      const response = startTransaction({ params }).then((result) => {
+        settled = true;
+        return result;
+      });
+
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      finish({ transactionId: 42, authorizationStatus: 'Accepted' });
+      await expect(response).resolves.toEqual({
+        transactionId: 42,
+        idTagInfo: { status: 'Accepted' },
+      });
+    });
+
+    it('translates an active-session conflict into the existing GenericError policy', async () => {
+      start.mockRejectedValue(new ActiveSessionConflictError());
+      const { startTransaction } = connect();
+
+      await expect(startTransaction({ params })).rejects.toMatchObject({
+        rpcErrorCode: 'GenericError',
+        message: 'Connector already has an active session',
+      });
+    });
+
+    it('propagates other database errors without a successful response', async () => {
+      const error = new Error('Database unavailable');
+      start.mockRejectedValue(error);
+      const { startTransaction } = connect();
+      await expect(startTransaction({ params })).rejects.toBe(error);
+    });
+
+    it('does not create sessions for replaced or closed clients', async () => {
+      const old = connect();
+      const current = connect();
+      await expect(old.startTransaction({ params })).rejects.toThrow(
+        'Connection is no longer current',
+      );
+      current.client.emit('close');
+      await expect(current.startTransaction({ params })).rejects.toThrow(
+        'Connection is no longer current',
+      );
+      expect(start).not.toHaveBeenCalled();
+    });
+  });
+
   describe('StatusNotification', () => {
     let server: EventEmitter;
     let state: ChargeStateService;
@@ -48,6 +181,7 @@ describe('Ocpp-RPC Server Service', () => {
         {} as UserService,
         new RpcConnectionManagerService(),
         state,
+        {} as SessionService,
       );
       await service.onModuleInit();
     });
@@ -175,6 +309,7 @@ describe('Ocpp-RPC Server Service', () => {
       {} as UserService,
       connections,
       new ChargeStateService(),
+      {} as SessionService,
     );
     const makeClient = (identity: string) =>
       Object.assign(new EventEmitter(), {
@@ -231,6 +366,7 @@ describe('Ocpp-RPC Server Service', () => {
         {} as UserService,
         new RpcConnectionManagerService(),
         new ChargeStateService(),
+        {} as SessionService,
       );
 
       await service.onModuleInit();
@@ -316,6 +452,7 @@ describe('Ocpp-RPC Server Service', () => {
         {} as unknown as UserService,
         new RpcConnectionManagerService(),
         new ChargeStateService(),
+        {} as SessionService,
       );
 
       await service.onModuleInit();
@@ -368,6 +505,7 @@ describe('Ocpp-RPC Server Service', () => {
         { findByIdTag } as unknown as UserService,
         new RpcConnectionManagerService(),
         new ChargeStateService(),
+        {} as SessionService,
       );
 
       await service.onModuleInit();

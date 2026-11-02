@@ -4,7 +4,14 @@ import { createRPCError, RPCServer } from 'ocpp-rpc';
 import { UserService } from '../users/user.service';
 import { RpcConnectionManagerService } from './rpc-connection-manager.service';
 import { ChargeStateService } from './charger-state.service';
-import type { StatusNotificationRequest } from './ocpp.types';
+import type {
+  StartTransactionRequest,
+  StatusNotificationRequest,
+} from './ocpp.types';
+import {
+  ActiveSessionConflictError,
+  SessionService,
+} from '../session/session.service';
 
 @Injectable()
 export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
@@ -13,6 +20,7 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
     private readonly userService: UserService,
     private readonly connections: RpcConnectionManagerService,
     private readonly chargeStateService: ChargeStateService,
+    private readonly sessionService: SessionService,
   ) {}
   private server!: RPCServer;
 
@@ -76,6 +84,42 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
             updatedAt: new Date(),
           });
           return {};
+        },
+      );
+
+      client.handle(
+        'StartTransaction',
+        async ({ params }: { params: StartTransactionRequest }) => {
+          if (this.connections.get(client.identity) !== client) {
+            throw createRPCError(
+              'GenericError',
+              'Connection is no longer current',
+            );
+          }
+          console.log(
+            `Start transaction from: ${client.identity} for connector: ${params.connectorId}`,
+          );
+          try {
+            const outcome = await this.sessionService.start({
+              chargePointId: client.identity,
+              connectorId: params.connectorId,
+              idTag: params.idTag,
+              meterStart: params.meterStart,
+              startedAt: new Date(params.timestamp),
+            });
+            return {
+              transactionId: outcome.transactionId,
+              idTagInfo: { status: outcome.authorizationStatus },
+            };
+          } catch (error) {
+            if (error instanceof ActiveSessionConflictError) {
+              throw createRPCError(
+                'GenericError',
+                'Connector already has an active session',
+              );
+            }
+            throw error;
+          }
         },
       );
 

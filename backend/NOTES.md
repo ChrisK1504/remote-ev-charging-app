@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-02 — RPC StartTransaction
+
+- Injected the existing SessionService into OcppRpcServerService and registered StartTransaction directly with ocpp-rpc. It forwards client.identity, connectorId, idTag, meterStart, and the charger timestamp converted to Date; session persistence completes before returning the generated transactionId and authorization outcome. SessionModule already exports SessionService and is imported by OcppModule.
+- Preserved existing policy: SessionService may record an unknown-tag session with null ownership and return Invalid; this migration does not change that behavior. ActiveSessionConflictError becomes an RPC GenericError with the existing connector-occupied description. Other failures propagate to ocpp-rpc without a fabricated success; wire error formatting belongs to the library. GenericError remains a local conflict policy, not a newly verified protocol requirement.
+- A current-client check rejects calls from replaced or closed clients before session creation. It does not cancel a database operation that began while the client was current, nor does it add duplicate-start replay protection or reconciliation.
+- Verified under Node 24.21.0: 254 tests pass across thirteen suites; two opt-in PostgreSQL tests are skipped. TypeScript --noEmit --incremental false and git diff --check pass. Six new RPC handler cases cover Accepted/Invalid outcomes, exact input forwarding, delayed persistence, active-session conflict mapping, original database-error propagation, and stale/closed-client rejection before persistence. Persistence and RPC transport are mocked in these tests; no new live charger or PostgreSQL lifecycle verification was performed.
+- Commit checkpoint: review and commit this bounded increment on feat/ocpp-rcp-integration. No commit or merge performed. StopTransaction and MeterValues remain to migrate; HTTP remote commands still use the old transport, so this branch is not ready for final transport cutover.
+
 ## 2026-11-02 — RPC StatusNotification
 
 - Registered StatusNotification directly in OcppRpcServerService, injecting the existing ChargeStateService. The handler uses client.identity and the reported connectorId/status/errorCode, records server receipt time in updatedAt, and returns an empty response. It preserves the existing handler's timestamp policy and updateConnector merge behavior; charger-reported timestamp/info/vendor fields are not newly persisted.
