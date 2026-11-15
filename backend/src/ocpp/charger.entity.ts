@@ -8,11 +8,28 @@ export class Charger {
   @Column({ name: 'connection_id', type: 'varchar', unique: true })
   connectionId!: string;
 
-  @Column({ name: 'charge_point_model', type: 'varchar', length: 20 })
-  chargePointModel!: string;
+  @Column({
+    name: 'password_hash',
+    type: 'text',
+    select: false,
+  })
+  passwordHash!: string;
 
-  @Column({ name: 'charge_point_vendor', type: 'varchar', length: 20 })
-  chargePointVendor!: string;
+  @Column({
+    name: 'charge_point_model',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  chargePointModel!: string | null;
+
+  @Column({
+    name: 'charge_point_vendor',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  chargePointVendor!: string | null;
 
   @Column({
     name: 'charge_point_serial_number',

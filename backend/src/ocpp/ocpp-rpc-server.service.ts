@@ -128,9 +128,28 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
       strictMode: true,
     });
     this.server.auth((accept, reject, handshake) => {
-      accept({
-        sessionId: 'TEST123',
-      });
+      const password = handshake.password;
+      if (password === undefined) {
+        reject(401, 'Unauthorized');
+        return;
+      }
+
+      void this.chargerService
+        .verifyCredentials({
+          connectionId: handshake.identity,
+          password,
+        })
+        .then((valid) => {
+          if (!valid) {
+            reject(401, 'Unauthorized');
+            return;
+          }
+          accept({ sessionId: 'TEST123' });
+        })
+        .catch(() => {
+          reject(503, 'Authorization unavailable');
+          return;
+        });
     });
 
     this.server.on('client', (client) => {
@@ -151,7 +170,7 @@ export class OcppRpcServerService implements OnModuleInit, OnModuleDestroy {
             params,
           );
 
-          await this.chargerService.registerOrUpdate(client.identity, params);
+          await this.chargerService.update(client.identity, params);
 
           return {
             status: 'Accepted',
