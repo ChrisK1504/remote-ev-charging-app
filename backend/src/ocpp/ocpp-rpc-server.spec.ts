@@ -22,6 +22,91 @@ jest.mock('ocpp-rpc', () => ({
 }));
 
 describe('Ocpp-RPC Server Service', () => {
+  describe('handshake authentication', () => {
+    let authenticate: (
+      accept: jest.Mock,
+      reject: jest.Mock,
+      handshake: { identity: string; password?: Buffer },
+    ) => void;
+    let verifyCredentials: jest.Mock;
+    let accept: jest.Mock;
+    let reject: jest.Mock;
+
+    beforeEach(async () => {
+      verifyCredentials = jest.fn();
+      accept = jest.fn();
+      reject = jest.fn();
+      const server = Object.assign(new EventEmitter(), {
+        auth: jest.fn((callback) => {
+          authenticate = callback;
+        }),
+        listen: jest.fn().mockResolvedValue(undefined),
+      });
+      jest
+        .mocked(RPCServer)
+        .mockImplementation(() => server as unknown as RPCServer);
+      await new OcppRpcServerService(
+        { verifyCredentials } as unknown as ChargerService,
+        {} as UserService,
+        new RpcConnectionManagerService(),
+        new ChargeStateService(),
+        {} as SessionService,
+      ).onModuleInit();
+    });
+
+    const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+    it('rejects missing passwords without querying credentials', () => {
+      authenticate(accept, reject, { identity: 'CP_TEST' });
+      expect(reject).toHaveBeenCalledWith(401, 'Unauthorized');
+      expect(verifyCredentials).not.toHaveBeenCalled();
+      expect(accept).not.toHaveBeenCalled();
+    });
+
+    it('rejects credentials that fail verification without accepting', async () => {
+      verifyCredentials.mockResolvedValue(false);
+      authenticate(accept, reject, {
+        identity: 'UNKNOWN',
+        password: Buffer.from('wrong'),
+      });
+      await settle();
+      expect(reject).toHaveBeenCalledWith(401, 'Unauthorized');
+      expect(accept).not.toHaveBeenCalled();
+    });
+
+    it('waits for verification before accepting and forwards the exact credentials', async () => {
+      let finish!: (valid: boolean) => void;
+      verifyCredentials.mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const password = Buffer.from('test');
+      authenticate(accept, reject, { identity: 'CP_TEST', password });
+      expect(verifyCredentials).toHaveBeenCalledWith({
+        connectionId: 'CP_TEST',
+        password,
+      });
+      expect(accept).not.toHaveBeenCalled();
+      expect(reject).not.toHaveBeenCalled();
+      finish(true);
+      await settle();
+      expect(accept).toHaveBeenCalledTimes(1);
+      expect(reject).not.toHaveBeenCalled();
+    });
+
+    it('rejects database or verification errors without accepting', async () => {
+      verifyCredentials.mockRejectedValue(new Error('database unavailable'));
+      authenticate(accept, reject, {
+        identity: 'CP_TEST',
+        password: Buffer.from('test'),
+      });
+      await settle();
+      expect(reject).toHaveBeenCalledWith(503, 'Authorization unavailable');
+      expect(accept).not.toHaveBeenCalled();
+    });
+  });
+
   describe('RPC remote commands', () => {
     let service: OcppRpcServerService;
     let client: { state: number; call: jest.Mock };

@@ -1,5 +1,13 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-15 — Charger authentication regression coverage
+
+- Added seven ChargerService cases: unknown identity with explicit hash selection, correct/wrong password Buffers checked against real Argon2 hashes, database errors, malformed stored hash, provisioning with usable Argon2id hash and public-only result, and duplicate-save error propagation without retry. Repository doubles do not prove PostgreSQL uniqueness enforcement.
+- Added four captured RPC authentication callback tests: missing password without lookup, failed verification without acceptance, deferred successful verification with exact identity/password forwarding, and verification failure mapped to 503 without acceptance. These exercise application callbacks with a mocked RPCServer, not live WebSocket upgrades or TLS.
+- Verified under Node 24.21.0: 240 tests pass across nine suites; two opt-in PostgreSQL tests skipped. TypeScript --noEmit --incremental false and git diff --check pass. No runtime code changed.
+- Deferred: TLS integration, live authentication wire regressions, and simultaneous credential reuse testing. The latter remains deferred at the developer's request. Next recommended bounded task: local TLS setup with an explicitly trusted test CA.
+
+
 ## 2026-11-15 — Provisioned charger authentication
 
 - Added Argon2id credential provisioning and database-backed RPC handshake authentication. Unknown identities, missing passwords, and incorrect passwords are rejected before connection registration. Verification failures reject the handshake with 503.
