@@ -776,7 +776,7 @@ describe('Ocpp-RPC Server Service', () => {
   });
 
   describe('BootNotification', () => {
-    let registerOrUpdate: jest.Mock;
+    let update: jest.Mock;
     let handle: jest.Mock;
 
     const params = {
@@ -785,7 +785,7 @@ describe('Ocpp-RPC Server Service', () => {
     };
 
     beforeEach(async () => {
-      registerOrUpdate = jest.fn();
+      update = jest.fn();
       handle = jest.fn();
 
       const server = Object.assign(new EventEmitter(), {
@@ -800,7 +800,7 @@ describe('Ocpp-RPC Server Service', () => {
 
       const service = new OcppRpcServerService(
         {
-          registerOrUpdate,
+          update,
         } as unknown as ChargerService,
         {} as UserService,
         new RpcConnectionManagerService(),
@@ -820,7 +820,7 @@ describe('Ocpp-RPC Server Service', () => {
 
     it('rejects when persistence fails', async () => {
       const error = new Error('Database unavailable');
-      registerOrUpdate.mockRejectedValue(error);
+      update.mockRejectedValue(error);
 
       const registration = handle.mock.calls.find(
         ([method]) => method === 'BootNotification',
@@ -830,12 +830,12 @@ describe('Ocpp-RPC Server Service', () => {
 
       await expect(bootHandler({ params })).rejects.toBe(error);
 
-      expect(registerOrUpdate).toHaveBeenCalledWith('CP_TEST', params);
+      expect(update).toHaveBeenCalledWith('CP_TEST', params);
     });
 
     it('does not return before persistence has finished', async () => {
       let finishPersistence!: () => void;
-      registerOrUpdate.mockReturnValue(
+      update.mockReturnValue(
         new Promise<void>((resolve) => {
           finishPersistence = resolve;
         }),
@@ -849,7 +849,7 @@ describe('Ocpp-RPC Server Service', () => {
       const bootHandler = registration![1];
 
       const unresolvedHandle = bootHandler({ params });
-      expect(registerOrUpdate).toHaveBeenCalledWith('CP_TEST', params);
+      expect(update).toHaveBeenCalledWith('CP_TEST', params);
 
       let settled = false;
       const response = unresolvedHandle.then((result) => {

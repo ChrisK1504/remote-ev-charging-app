@@ -1,5 +1,16 @@
 # BACKEND PROGRESS NOTES
 
+## 2026-11-15 — Provisioned charger authentication
+
+- Added Argon2id credential provisioning and database-backed RPC handshake authentication. Unknown identities, missing passwords, and incorrect passwords are rejected before connection registration. Verification failures reject the handshake with 503.
+- BootNotification now updates an existing charger rather than inserting one. Migration 008 deletes disposable charger rows, requires password_hash, and permits unknown model/vendor before first boot. This destructive migration is for the confirmed disposable prototype data, not a production migration strategy.
+- Added a standalone provisioning script; its result excludes the credential hash. The local RPC smoke client uses disposable test credentials over ws, without TLS.
+- Developer reports applying the migration and verifying valid credentials, rejection of missing/wrong passwords and unknown identity, and duplicate provisioning failure without changing the original credentials. These are developer-reported manual results, not assistant-observed database/network tests.
+- Updated BootNotification mocks for the renamed update method and PostgreSQL fixtures to apply migration 008 and provision before metadata updates. Automated handshake/authentication regressions remain outstanding. Simultaneous connections with the same credentials are explicitly deferred at the developer's request. TLS, credential rotation, retired-charger rejection, admin provisioning UI, and production provisioning input/error handling remain unfinished.
+- Assistant verification under Node 24.21.0: 229 tests pass; two opt-in PostgreSQL tests skipped. TypeScript checking and git diff --check pass. Updated database fixtures were not executed against PostgreSQL in this session.
+- Concept practiced: provisioning grants an identity credentials; authentication verifies them before connection side effects; BootNotification only supplies metadata. select:false excludes hashes from ordinary reads, not save results.
+
+
 ## 2026-11-02 — Retired custom OCPP transport
 
 - Removed the old OcppServerService, raw ConnectionManagerService, PendingRequestService, OcppCallHandlersService, and envelope guards, together with their five implementation-specific spec files. Removed old provider registrations; RPC is now the only configured OCPP listener, on port 9001. HTTP commands already use OcppRpcServerService.

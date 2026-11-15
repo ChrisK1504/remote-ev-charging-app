@@ -9,7 +9,8 @@ const { RPCClient } = ocppRpc;
 
 const cli = new RPCClient({
     endpoint: 'ws://localhost:9001',
-    identity: 'EXAMPLE',
+    identity: 'CP_EXAMPLE',
+    password: 'local-test',
     protocols: ['ocpp1.6'],
     strictMode: true,
 })

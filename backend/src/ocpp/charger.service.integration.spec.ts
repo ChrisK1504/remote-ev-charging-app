@@ -48,8 +48,13 @@ describeDatabase('ChargerService PostgreSQL persistence', () => {
     await runner.query(
       migration.replace('CREATE TABLE chargers', 'CREATE TEMP TABLE chargers'),
     );
+    await runner.query(readFileSync(
+      resolve(__dirname, '../../migrations/008_charger_credentials.sql'),
+      'utf8',
+    ));
     repository = runner.manager.getRepository(Charger);
     service = new ChargerService(repository);
+    await service.provision({ connectionId: 'CP_TEST', password: 'test-only' });
   });
 
   afterEach(async () => {
@@ -62,7 +67,7 @@ describeDatabase('ChargerService PostgreSQL persistence', () => {
   });
 
   it('updates every reported field while preserving one row and its identity', async () => {
-    await service.registerOrUpdate('CP_TEST', metadata);
+    await service.update('CP_TEST', metadata);
     const original = await repository.findOneByOrFail({
       connectionId: 'CP_TEST',
     });
@@ -70,7 +75,7 @@ describeDatabase('ChargerService PostgreSQL persistence', () => {
       Object.entries(metadata).map(([key, value]) => [key, `${value}2`]),
     ) as typeof metadata;
 
-    await service.registerOrUpdate('CP_TEST', updated);
+    await service.update('CP_TEST', updated);
 
     expect(await repository.count()).toBe(1);
     expect(
@@ -85,8 +90,8 @@ describeDatabase('ChargerService PostgreSQL persistence', () => {
   });
 
   it('retains optional metadata omitted from a later boot', async () => {
-    await service.registerOrUpdate('CP_TEST', metadata);
-    await service.registerOrUpdate('CP_TEST', {
+    await service.update('CP_TEST', metadata);
+    await service.update('CP_TEST', {
       chargePointModel: 'Model B',
       chargePointVendor: 'Vendor B',
     });
